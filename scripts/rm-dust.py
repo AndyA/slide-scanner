@@ -41,14 +41,14 @@ def rm_dust(
     return np.stack([r, g, b])
 
 
-for img_file in glob.glob(os.path.join(SCANS_DIR, "**", "rgbu16.tiff"), recursive=True):
+for img_file in glob.glob(os.path.join(SCANS_DIR, "**", "image.tiff"), recursive=True):
     dir = os.path.dirname(img_file)
     out_file = os.path.join(dir, "ir.cleaned.tiff")
     # if os.path.exists(out_file):
     #     continue
     print(f"Processing {img_file}")
     img = imread(img_file)
-    ir = imread(os.path.join(dir, "rgbu16_ir.tiff"))
+    ir = imread(os.path.join(dir, "ir.tiff"))
     foo(dir, ir)
     clean = rm_dust(dir, img, ir, threshold=0.10)
     imwrite(out_file, clean, photometric="rgb")

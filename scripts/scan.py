@@ -1,11 +1,36 @@
 import os
 from datetime import UTC, datetime
 
+import numpy as np
 import sane
 from tifffile import imwrite
 
 SCANS_DIR = "scans"
 RESOLUTION = 1800
+
+RGB_SOURCE = "Transparency Adapter"
+IR_SOURCE = "Transparency Adapter Infrared"
+
+
+def scan(
+    devname: str,
+    source: str,
+    resolution: int = 7200,
+    mode: str = "Color",
+    depth: int = 16,
+) -> np.ndarray:
+    dev = sane.open(devname)
+
+    dev.mode = mode
+    dev.depth = depth
+    dev.resolution = resolution
+    dev.source = source
+
+    dev.start()
+    arr = dev.arr_snap()
+    dev.close()
+    return arr
+
 
 sane.init()
 devices = sane.get_devices(localOnly=True)
@@ -22,23 +47,27 @@ scan_dir = os.path.join(
 )
 os.makedirs(scan_dir, exist_ok=True)
 
-scans = [
-    ("Transparency Adapter", ""),
-    ("Transparency Adapter Infrared", "_ir"),
-]
 
-for source, suffix in scans:
-    file = os.path.join(scan_dir, f"rgbu16{suffix}.tiff")
-    print(f"{source} -> {file}")
-    dev = sane.open(devname)
+img_file = os.path.join(scan_dir, "image.tiff")
+print(f"{RGB_SOURCE} -> {img_file}")
+img = scan(devname, RGB_SOURCE, RESOLUTION)
+imwrite(
+    img_file,
+    img,
+    photometric="rgb",
+    compression="zlib",
+    compressionargs={"level": 8},
+    predictor=True,
+)
 
-    dev.mode = "Color"
-    dev.depth = 16
-    dev.resolution = RESOLUTION
-    dev.source = source
-
-    dev.start()
-    arr = dev.arr_snap()
-    imwrite(file, arr, photometric="rgb")
-
-    dev.close()
+ir_file = os.path.join(scan_dir, "ir.tiff")
+print(f"{IR_SOURCE} -> {ir_file}")
+ir = scan(devname, IR_SOURCE, RESOLUTION)
+imwrite(
+    ir_file,
+    ir[:, :, 0],
+    photometric="minisblack",
+    compression="zlib",
+    compressionargs={"level": 8},
+    predictor=True,
+)
