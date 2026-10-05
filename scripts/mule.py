@@ -12,9 +12,9 @@ for img_file in glob.glob(os.path.join(SCANS_DIR, "**", "ir.tiff"), recursive=Tr
     img = imread(img_file)
     min = img.min()
     max = img.max()
-    for pc in range(0, 100, 10):
+    for pc in range(0, 100, 5):
         cutoff = int(((max - min) / 100 * pc) + min)
-        out_file = os.path.join(dir, f"ir.threshold-{pc}.tiff")
+        out_file = os.path.join(dir, f"mule.threshold-{pc}.tiff")
         print(f"  {out_file}")
         threshold = ((img < cutoff) * 255).astype(np.uint8)
         imwrite(out_file, threshold, photometric="minisblack")
