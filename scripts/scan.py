@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 import numpy as np
 import sane
 from lib.constants import SCANS_DIR
-from lib.peer_files import PeerFiles
+from lib.job_files import JobFiles
 
 RESOLUTION = 1800
 
@@ -46,14 +46,14 @@ scan_dir = os.path.join(
     datetime.now(UTC).strftime("%Y/%m/%d/%H%M%S") + "-" + str(RESOLUTION),
 )
 
-pf = PeerFiles(dir=scan_dir)
+jf = JobFiles(dir=scan_dir)
 
 print(f"Scanning to {scan_dir}")
 
 print(f"  {RGB_SOURCE} -> image.tiff")
 img = scan(devname, RGB_SOURCE, RESOLUTION)
-pf.save("image", img, photometric="rgb")
+jf.save("image", img, photometric="rgb")
 
 print(f"  {IR_SOURCE} -> ir.tiff")
 ir = scan(devname, IR_SOURCE, RESOLUTION)
-pf.save("ir", ir[:, :, 0], photometric="minisblack")
+jf.save("ir", ir[:, :, 0], photometric="minisblack")

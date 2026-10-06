@@ -9,7 +9,7 @@ from tifffile import imread, imwrite  # pyright: ignore[reportUnknownVariableTyp
 
 
 @dataclass(kw_only=True, frozen=True)
-class PeerFiles:
+class JobFiles:
     dir: str
 
     @classmethod
