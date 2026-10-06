@@ -3,19 +3,8 @@ import os
 
 import cv2
 import numpy as np
-from tifffile import imread, imwrite
-
-SCANS_DIR = "scans"
-
-
-def foo(dir: str, img: np.ndarray) -> None:
-    blur_sm = cv2.blur(img, (5, 5))
-    imwrite(os.path.join(dir, "ir.blur_sm.tiff"), blur_sm, photometric="rgb")
-    blur_bg = cv2.blur(img, (21, 21))
-    imwrite(os.path.join(dir, "ir.blur_bg.tiff"), blur_bg, photometric="rgb")
-    diff = blur_sm - blur_bg
-    # print(diff.shape, diff.dtype)
-    imwrite(os.path.join(dir, "ir.diff.tiff"), diff, photometric="rgb")
+from lib.constants import SCANS_DIR
+from tifffile import imread, imwrite  # pyright: ignore[reportUnknownVariableType]
 
 
 def rm_dust(
@@ -49,6 +38,5 @@ for img_file in glob.glob(os.path.join(SCANS_DIR, "**", "image.tiff"), recursive
     print(f"Processing {img_file}")
     img = imread(img_file)
     ir = imread(os.path.join(dir, "ir.tiff"))
-    foo(dir, ir)
     clean = rm_dust(dir, img, ir, threshold=0.10)
     imwrite(out_file, clean, photometric="rgb")

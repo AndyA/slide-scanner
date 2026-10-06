@@ -171,7 +171,7 @@ dependencies = [
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pillow" },
-    { name = "python-sane" },
+    { name = "python-sane", marker = "sys_platform == 'linux'" },
     { name = "tifffile" },
 ]
 
@@ -181,7 +181,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "opencv-python", specifier = ">=5.0.0.93" },
     { name = "pillow", specifier = ">=12.3.0" },
-    { name = "python-sane", specifier = ">=2.9.2" },
+    { name = "python-sane", marker = "sys_platform == 'linux'", specifier = ">=2.9.2" },
     { name = "tifffile", specifier = ">=2026.9.20" },
 ]
 
