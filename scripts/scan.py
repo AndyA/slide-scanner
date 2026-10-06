@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 
 import numpy as np
 import sane
-from tifffile import imwrite
+from lib.constants import SCANS_DIR
+from lib.peer_files import PeerFiles
 
-SCANS_DIR = "scans"
 RESOLUTION = 1800
 
 RGB_SOURCE = "Transparency Adapter"
@@ -45,29 +45,17 @@ scan_dir = os.path.join(
     SCANS_DIR,
     datetime.now(UTC).strftime("%Y/%m/%d/%H%M%S") + "-" + str(RESOLUTION),
 )
+
+pf = PeerFiles(dir=scan_dir)
+
 os.makedirs(scan_dir, exist_ok=True)
 
 
-img_file = os.path.join(scan_dir, "image.tiff")
-print(f"{RGB_SOURCE} -> {img_file}")
+print(f"{RGB_SOURCE}")
 img = scan(devname, RGB_SOURCE, RESOLUTION)
-imwrite(
-    img_file,
-    img,
-    photometric="rgb",
-    compression="zlib",
-    compressionargs={"level": 8},
-    predictor=True,
-)
+pf.save("image", img, photometric="rgb")
 
 ir_file = os.path.join(scan_dir, "ir.tiff")
 print(f"{IR_SOURCE} -> {ir_file}")
 ir = scan(devname, IR_SOURCE, RESOLUTION)
-imwrite(
-    ir_file,
-    ir[:, :, 0],
-    photometric="minisblack",
-    compression="zlib",
-    compressionargs={"level": 8},
-    predictor=True,
-)
+pf.save("ir", ir, photometric="minisblack")

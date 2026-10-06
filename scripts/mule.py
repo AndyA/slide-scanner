@@ -20,14 +20,17 @@ def thresholds(pf: PeerFiles) -> None:
 
 def mean_thresholds(pf: PeerFiles) -> None:
     ir = pf.load("ir")
-    blurred = cv2.GaussianBlur(ir, (75, 75), 0)
-    pf.save("mule.blurred", blurred, photometric="minisblack")
+    scale = max(ir.shape[0], ir.shape[1]) / 2560
+    blur_size = int(75 * scale)
+    blurred = cv2.GaussianBlur(ir, (blur_size, blur_size), 0)
+    # pf.save("mule.blurred", blurred, photometric="minisblack")
     diff = ((ir < blurred * 0.9) * 255).astype(np.uint8)
-    pf.save("mule.diff", diff, photometric="minisblack")
+    # pf.save("mule.diff", diff, photometric="minisblack")
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    kernel_size = int(5 * scale) | 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     mask = cv2.dilate(diff, kernel, iterations=1)
-    pf.save("mule.fat", mask, photometric="minisblack")
+    # pf.save("mule.fat", mask, photometric="minisblack")
 
     img = pf.load("image")
     radius = 0.95

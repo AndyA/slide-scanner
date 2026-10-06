@@ -1,1 +1,1 @@
-SCANS_DIR = "scans"
+SCANS_DIR = "slide-scans"
