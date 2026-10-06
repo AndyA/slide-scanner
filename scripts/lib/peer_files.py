@@ -57,5 +57,5 @@ class PeerFiles:
         file_name = self.json_name(base)
         tmp_name = self.json_name(f"tmp.{base}")
         with open(tmp_name, "w") as f:
-            json.dump(data, f)
+            json.dump(data, f, indent=2)
         os.rename(tmp_name, file_name)
