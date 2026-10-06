@@ -51,11 +51,10 @@ pf = PeerFiles(dir=scan_dir)
 os.makedirs(scan_dir, exist_ok=True)
 
 
-print(f"{RGB_SOURCE}")
+print(f"{RGB_SOURCE} -> image.tiff")
 img = scan(devname, RGB_SOURCE, RESOLUTION)
 pf.save("image", img, photometric="rgb")
 
-ir_file = os.path.join(scan_dir, "ir.tiff")
-print(f"{IR_SOURCE} -> {ir_file}")
+print(f"{IR_SOURCE} -> ir.tiff")
 ir = scan(devname, IR_SOURCE, RESOLUTION)
-pf.save("ir", ir, photometric="minisblack")
+pf.save("ir", ir[:, :, 0], photometric="minisblack")
