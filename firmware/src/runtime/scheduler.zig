@@ -1,7 +1,7 @@
 // Simple scheduler
 const std = @import("std");
 
-const microzig = @import("../tools/bootstrap.zig").microzig;
+const microzig = @import("microzig");
 
 const callback = @import("callback.zig");
 
