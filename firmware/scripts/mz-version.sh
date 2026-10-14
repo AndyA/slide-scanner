@@ -8,8 +8,8 @@ mkdir -p "$state"
 
 for minor in {17..2}; do
   version="0.17.$minor"
-  for zig in "master" "0.17.0"; do
-    zvm use "$zig"
+  for zig in "master" "0.17.0" "0.17.0-dev.1936+5a625d5f3"; do
+    zvm use "$zig" > /dev/null
     zig_version="$( zig version )"
     tag="$state/$version-$zig_version.seen"
     if [[ -e $tag ]]; then

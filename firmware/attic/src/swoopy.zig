@@ -16,9 +16,9 @@ const STSpin = @import("drivers/STSpin.zig");
 const stepper = @import("app/stepper.zig");
 const StepperController = stepper.StepperController;
 
-// comptime {
-//     _ = microzig.export_startup();
-// }
+comptime {
+    _ = microzig.export_startup();
+}
 
 pub const microzig_options: microzig.Options = .{
     .log_level = .debug,
