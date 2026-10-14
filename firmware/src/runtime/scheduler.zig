@@ -92,10 +92,9 @@ pub fn makeScheduler(comptime size: u8) type {
         }
 
         pub fn pri(self: *Self, index: i9) *ScheduleSlot {
-            if (index < 0)
-                return &self.slots[@intCast(size + index)]
-            else
-                return &self.slots[@intCast(index)];
+            const pos: u8 = if (index < 0) @intCast(size + index) else @intCast(index);
+            assert(pos < size);
+            return &self.slots[pos];
         }
     };
 }
