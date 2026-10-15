@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const print = std.debug.print;
 
-const microzig = @import("../tools/bootstrap.zig").microzig;
+const microzig = @import("microzig");
 
 const hal = microzig.hal;
 const time = microzig.drivers.time;
@@ -11,7 +11,6 @@ const Pin = hal.gpio.Pin;
 
 const ScheduleSlot = @import("../runtime/scheduler.zig").ScheduleSlot;
 const events = @import("../runtime/events.zig");
-const clock = @import("../runtime/clock.zig");
 
 const Self = @This();
 
@@ -31,8 +30,8 @@ pub const Config = struct {
     dir_pin: Pin,
     mode1_pin: ?Pin = null,
     mode2_pin: ?Pin = null,
-    en_fault_pin: ?Pin = null,
-    reset_pin: ?Pin = null,
+    diag_pin: ?Pin = null,
+    enable_pin: ?Pin = null,
     debug_pin: ?Pin = null,
 };
 
@@ -174,7 +173,7 @@ pub fn start(self: *Self, slot: *ScheduleSlot) !void {
     const pins = .{
         self.config.mode1_pin,
         self.config.mode2_pin,
-        self.config.reset_pin,
+        self.config.enable_pin,
     };
 
     inline for (pins) |maybe_pin|
@@ -197,7 +196,7 @@ pub fn start(self: *Self, slot: *ScheduleSlot) !void {
 pub fn canSetMicrostep(self: Self) bool {
     return self.config.mode1_pin != null and
         self.config.mode2_pin != null and
-        self.config.reset_pin != null;
+        self.config.enable_pin != null;
 }
 
 pub fn stop(self: *Self) void {
@@ -428,7 +427,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
                 // set mode bits
                 // wait 1µS
                 // go to .MODE_HOLD
-                c.reset_pin.?.put(0);
+                c.enable_pin.?.put(0);
                 const bits = lookupMicrostep(pending);
                 c.mode1_pin.?.put(bitSet(bits, 0));
                 c.mode2_pin.?.put(bitSet(bits, 1));
@@ -448,7 +447,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
             // wait 100µS
             // go to .MODE_DONE
             self.state = .MODE_DONE; // don't advise
-            c.reset_pin.?.put(1);
+            c.enable_pin.?.put(1);
             slot.delay(MODE_HOLD_TIME);
         },
         .MODE_DONE => {
@@ -461,8 +460,8 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
         },
 
         .STOPPING => {
-            if (c.reset_pin) |reset_pin|
-                reset_pin.put(0);
+            if (c.enable_pin) |enable_pin|
+                enable_pin.put(0);
             try self.notifyState(.INIT);
             // don't reschedule
         },
@@ -590,8 +589,8 @@ test STSpin {
     var stepper: STSpin = .init(.{
         .step_pin = try runner.pin("STEP"),
         .dir_pin = try runner.pin("DIR"),
-        .reset_pin = try runner.pin("RESET"),
-        .en_fault_pin = try runner.pin("FAULT"),
+        .enable_pin = try runner.pin("RESET"),
+        .diag_pin = try runner.pin("FAULT"),
         .mode1_pin = try runner.pin("MODE1"),
         .mode2_pin = try runner.pin("MODE2"),
     });

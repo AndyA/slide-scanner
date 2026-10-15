@@ -6,6 +6,7 @@ const time = hal.time;
 const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
 const Blinker = @import("drivers/Blinker.zig");
+const STC2209 = @import("drivers/STC2209.zig");
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
@@ -55,15 +56,13 @@ const Pulser = struct {
 const pin_config = hal.pins.GlobalConfiguration{
     .GPIO25 = .{ .name = "led", .direction = .out },
 
-    .GPIO16 = .{ .name = "debug", .direction = .out },
-    .GPIO21 = .{ .name = "dir", .direction = .out },
-    .GPIO20 = .{ .name = "step", .direction = .out },
-    // .GPIO19 = .{ .name = "mode1", .direction = .out },
-    // .GPIO18 = .{ .name = "mode2", .direction = .out },
-    // .GPIO17 = .{ .name = "fault", .direction = .in, .pull = .up },
-    // .GPIO16 = .{ .name = "reset", .direction = .out },
-    // .GPIO27 = .{ .name = "debug", .direction = .out },
-
+    // STC2209
+    .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
+    .GPIO16 = .{ .name = "dir", .direction = .out },
+    .GPIO17 = .{ .name = "step", .direction = .out },
+    .GPIO18 = .{ .name = "mode2", .direction = .out },
+    .GPIO19 = .{ .name = "mode1", .direction = .out },
+    .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
 const Scheduler = sched.makeScheduler(8);
@@ -74,10 +73,25 @@ pub fn main() !void {
     const pins = pin_config.apply();
     var scheduler: Scheduler = .empty;
 
+    if (true) {
+        var motor: STC2209 = .init(.{
+            .step_pin = pins.step,
+            .dir_pin = pins.dir,
+            .enable_pin = pins.en,
+            // .en_fault_pin = pins.fault,
+            // .mode1_pin = pins.mode1,
+            // .mode2_pin = pins.mode2,
+            // .debug_pin = pins.debug,
+        });
+        // try motor.start(scheduler.pri(0));
+        motor.speed = 0;
+
+        // motor.setSpeed(1000);
+        // motor.rotate(1000);
+    }
+
     var led = Blinker.init_us(pins.led, 250_000);
-    led.schedule(scheduler.pri(0));
-    var pulser: Pulser = .{ .step_pin = pins.debug, .rate = 1000 };
-    pulser.schedule(scheduler.pri(1));
+    led.schedule(scheduler.pri(1));
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());
