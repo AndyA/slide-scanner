@@ -20,12 +20,14 @@ pub fn build(b: *std.Build) void {
     const elf = mb.add_install_firmware(firmware, .{ .format = .elf });
     mb.builder.getInstallStep().dependOn(&elf.step);
 
+    const rp2040_config = b.option([]const u8, "config", "rp2040 openocd config");
+
     const openocd = b.addSystemCommand(&.{"openocd"});
     openocd.addArgs(&.{
         "-f",
         "etc/cmis-dap.cfg",
         "-f",
-        "etc/rp2040.cfg",
+        rp2040_config orelse "etc/rp2040.cfg",
         "-c",
         "adapter speed 5000",
         "-c",
