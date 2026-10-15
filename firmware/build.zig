@@ -29,14 +29,10 @@ pub fn build(b: *std.Build) void {
 
     const openocd = b.addSystemCommand(&.{"openocd"});
     openocd.addArgs(&.{
-        "-f",
-        "etc/cmis-dap.cfg",
-        "-f",
-        rp_config orelse rp_default_config,
-        "-c",
-        "adapter speed 5000",
-        "-c",
-        "program zig-out/firmware/scanner.elf verify reset exit",
+        "-f", "etc/cmis-dap.cfg", //
+        "-f", rp_config orelse rp_default_config, //
+        "-c", "adapter speed 5000", //
+        "-c", "program zig-out/firmware/scanner.elf verify reset exit", //
     });
     openocd.step.dependOn(&elf.step);
 
