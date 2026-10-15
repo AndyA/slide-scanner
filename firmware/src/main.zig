@@ -73,22 +73,19 @@ pub fn main() !void {
     const pins = pin_config.apply();
     var scheduler: Scheduler = .empty;
 
-    if (true) {
-        var motor: STC2209 = .init(.{
-            .step_pin = pins.step,
-            .dir_pin = pins.dir,
-            .enable_pin = pins.en,
-            // .en_fault_pin = pins.fault,
-            // .mode1_pin = pins.mode1,
-            // .mode2_pin = pins.mode2,
-            // .debug_pin = pins.debug,
-        });
-        // try motor.start(scheduler.pri(0));
-        motor.speed = 0;
+    var motor: STC2209 = .init(.{
+        .step_pin = pins.step,
+        .dir_pin = pins.dir,
+        .enable_pin = pins.en,
+        // .en_fault_pin = pins.fault,
+        // .mode1_pin = pins.mode1,
+        // .mode2_pin = pins.mode2,
+        // .debug_pin = pins.debug,
+    });
+    try motor.start(scheduler.pri(0));
 
-        // motor.setSpeed(1000);
-        // motor.rotate(1000);
-    }
+    motor.setSpeed(100);
+    motor.rotate(1000);
 
     var led = Blinker.init_us(pins.led, 250_000);
     led.schedule(scheduler.pri(1));

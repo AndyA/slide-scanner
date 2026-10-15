@@ -287,6 +287,7 @@ fn lookupMicrostep(microstep: u16) u4 {
 }
 
 fn notifyState(self: *Self, state: State) !void {
+    std.log.info("{s} -> {s}", .{ @tagName(self.state), @tagName(state) });
     self.state = state;
     try self.state_ee.emit(.{ .target = self, .state = state });
 }
@@ -319,7 +320,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
     sm: switch (self.state) {
         .INIT => unreachable,
         .IDLE => {
-            if (self.microstep.dirty()) {
+            if (self.microstep.dirty() and self.canSetMicrostep()) {
                 self.state = .MODE_SETUP;
                 continue :sm self.state;
             }
