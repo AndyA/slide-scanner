@@ -7,6 +7,7 @@ const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
 const Blinker = @import("drivers/Blinker.zig");
 const STC2209 = @import("drivers/STC2209.zig");
+const switchet = @import("drivers/switchset.zig");
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
@@ -54,6 +55,10 @@ const Pulser = struct {
 
 // Compile-time pin configuration
 const pin_config = hal.pins.GlobalConfiguration{
+    .GPIO4 = .{ .name = "opto", .direction = .in, .pull = .up },
+    .GPIO8 = .{ .name = "hlt_sw", .direction = .in, .pull = .up },
+    .GPIO9 = .{ .name = "rst_led", .direction = .out },
+    .GPIO13 = .{ .name = "hlt_led", .direction = .out },
     .GPIO25 = .{ .name = "led", .direction = .out },
 
     // STC2209
@@ -68,6 +73,14 @@ const pin_config = hal.pins.GlobalConfiguration{
 };
 
 const Scheduler = sched.makeScheduler(8);
+
+const SwitchMap = enum(u8) { OPTO, HALT };
+const Switches = switchet.SwitcheSet(SwitchMap, 2);
+
+fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
+    std.log.info("{s}: {any}", .{ @tagName(payload.which), payload.state });
+    _ = ctx;
+}
 
 pub fn main() !void {
     logging.init(.{});
@@ -87,11 +100,21 @@ pub fn main() !void {
     });
     try motor.start(scheduler.pri(0));
 
-    motor.setSpeed(2000);
+    motor.setSpeed(5000);
     motor.rotate(1000000);
 
     var led = Blinker.init(pins.led, 500_000);
     led.schedule(scheduler.pri(1));
+    var rst_led = Blinker.init(pins.rst_led, 300_000);
+    rst_led.schedule(scheduler.pri(2));
+    var hlt_led = Blinker.init(pins.hlt_led, 100_000);
+    hlt_led.schedule(scheduler.pri(3));
+
+    var switches: Switches = .init(.{ pins.opto, pins.hlt_sw });
+    switches.schedule(scheduler.pri(4));
+
+    switches.get(.OPTO).ee.addListener(onSwitch, &.{});
+    switches.get(.HALT).ee.addListener(onSwitch, &.{});
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());

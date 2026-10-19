@@ -1,2 +1,2 @@
 
-[Pico pinout](https://pico.pinout.xyz/#l=20aDIAG;21aDIR;22aSTEP;23aCLK;24aMS2;25aMS1;26ePDN%2F1k;27ePDN;29aEN;36dVDD&i=upl)
+[Pico pinout](https://pico.pinout.xyz/#l=06aOPTO;11aHLT_SW;12aRST_LED;17aHLT_LED;18aSW_GND;20aDIAG;21aDIR;22aSTEP;23dGND;24aMS2;25aMS1;26ePDN%2F1k;27ePDN;29aEN;36dVDD&i=upl)

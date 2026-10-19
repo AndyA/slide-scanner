@@ -6,6 +6,9 @@ const MicroBuild = microzig.MicroBuild(.{
 });
 
 pub fn build(b: *std.Build) void {
+    const optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
+
     const mz_dep = b.dependency("microzig", .{});
     const mb = MicroBuild.init(b, mz_dep) orelse return;
 
@@ -38,4 +41,32 @@ pub fn build(b: *std.Build) void {
 
     const prog_step = b.step("program", "Send to the RP2040");
     prog_step.dependOn(&openocd.step);
+
+    const mule = b.addExecutable(.{
+        .name = "mule",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/mule.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(mule);
+
+    const mule_step = b.step("mule", "Run the mule");
+    const mule_cmd = b.addRunArtifact(mule);
+    mule_step.dependOn(&mule_cmd.step);
+    mule_cmd.step.dependOn(b.getInstallStep());
+
+    const unit_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/mule.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    const unit_tests_run = b.addRunArtifact(unit_tests);
+    const test_step = b.step("test", "Run platform agnostic unit tests");
+    test_step.dependOn(&unit_tests_run.step);
 }
