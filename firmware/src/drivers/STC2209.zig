@@ -170,15 +170,14 @@ pub fn start(self: *Self, slot: *ScheduleSlot) !void {
     self.config.dir_pin.put(1);
     self.config.step_pin.put(1);
 
-    const pins = .{
-        self.config.mode1_pin,
-        self.config.mode2_pin,
-        self.config.enable_pin,
-    };
+    if (self.config.mode1_pin) |pin|
+        pin.put(1);
 
-    inline for (pins) |maybe_pin|
-        if (maybe_pin) |pin|
-            pin.put(1);
+    if (self.config.mode2_pin) |pin|
+        pin.put(1);
+
+    if (self.config.enable_pin) |pin|
+        pin.put(0);
 
     if (self.canSetMicrostep()) {
         // Force state machine to configure microstep
@@ -428,7 +427,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
                 // set mode bits
                 // wait 1µS
                 // go to .MODE_HOLD
-                c.enable_pin.?.put(0);
+                c.enable_pin.?.put(1);
                 const bits = lookupMicrostep(pending);
                 c.mode1_pin.?.put(bitSet(bits, 0));
                 c.mode2_pin.?.put(bitSet(bits, 1));
@@ -448,7 +447,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
             // wait 100µS
             // go to .MODE_DONE
             self.state = .MODE_DONE; // don't advise
-            c.enable_pin.?.put(1);
+            c.enable_pin.?.put(0);
             slot.delay(MODE_HOLD_TIME);
         },
         .MODE_DONE => {
@@ -462,7 +461,7 @@ fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
 
         .STOPPING => {
             if (c.enable_pin) |enable_pin|
-                enable_pin.put(0);
+                enable_pin.put(1);
             try self.notifyState(.INIT);
             // don't reschedule
         },

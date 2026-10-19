@@ -11,11 +11,15 @@ const Self = @This();
 pin: Pin,
 delay: time.Duration,
 
-pub fn init_us(pin: Pin, delay_us: u64) Self {
+pub fn init(pin: Pin, delay_us: u64) Self {
     return Self{
         .pin = pin,
         .delay = time.Duration.from_us(delay_us),
     };
+}
+
+pub fn setDelay(self: *Self, delay_us: u64) void {
+    self.delay = time.Duration.from_us(delay_us);
 }
 
 pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {

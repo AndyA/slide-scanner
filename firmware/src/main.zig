@@ -62,6 +62,8 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO17 = .{ .name = "step", .direction = .out },
     .GPIO18 = .{ .name = "mode2", .direction = .out },
     .GPIO19 = .{ .name = "mode1", .direction = .out },
+    .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
+    .GPIO21 = .{ .name = "pdn_rx", .direction = .out },
     .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
@@ -73,24 +75,26 @@ pub fn main() !void {
     const pins = pin_config.apply();
     var scheduler: Scheduler = .empty;
 
+    pins.pdn_rx.put(1);
+    pins.pdn_tx.put(1);
+
     var motor: STC2209 = .init(.{
         .step_pin = pins.step,
         .dir_pin = pins.dir,
         .enable_pin = pins.en,
-        // .en_fault_pin = pins.fault,
-        // .mode1_pin = pins.mode1,
-        // .mode2_pin = pins.mode2,
-        // .debug_pin = pins.debug,
+        .mode1_pin = pins.mode1,
+        .mode2_pin = pins.mode2,
     });
     try motor.start(scheduler.pri(0));
 
-    motor.setSpeed(100);
-    motor.rotate(1000);
+    motor.setSpeed(2000);
+    motor.rotate(1000000);
 
-    var led = Blinker.init_us(pins.led, 250_000);
+    var led = Blinker.init(pins.led, 500_000);
     led.schedule(scheduler.pri(1));
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());
+        led.setDelay(if (pins.diag.read() == 1) 50_000 else 500_000);
     }
 }
