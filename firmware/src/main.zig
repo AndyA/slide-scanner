@@ -7,7 +7,7 @@ const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
 const Blinker = @import("drivers/Blinker.zig");
 const STC2209 = @import("drivers/STC2209.zig");
-const switchet = @import("drivers/switchset.zig");
+const Engine = @import("scanner/Engine.zig");
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
@@ -25,33 +25,6 @@ pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noretu
 }
 
 const Pin = hal.gpio.Pin;
-
-const Pulser = struct {
-    const Self = @This();
-    step_pin: Pin,
-    rate: u64,
-    state: enum { off, on } = .off,
-
-    pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {
-        slot.schedule(slot.now, advance, self);
-    }
-
-    fn advance(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        switch (self.state) {
-            .off => {
-                self.step_pin.put(1);
-                slot.delay(self.rate);
-                self.state = .on;
-            },
-            .on => {
-                self.step_pin.put(0);
-                slot.delay(self.rate);
-                self.state = .off;
-            },
-        }
-    }
-};
 
 // Compile-time pin configuration
 const pin_config = hal.pins.GlobalConfiguration{
@@ -74,14 +47,6 @@ const pin_config = hal.pins.GlobalConfiguration{
 
 const Scheduler = sched.makeScheduler(8);
 
-const SwitchMap = enum(u8) { OPTO, HALT };
-const Switches = switchet.SwitcheSet(SwitchMap, 2);
-
-fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
-    std.log.info("{s}: {any}", .{ @tagName(payload.which), payload.state });
-    _ = ctx;
-}
-
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
@@ -98,10 +63,6 @@ pub fn main() !void {
         .mode1_pin = pins.mode1,
         .mode2_pin = pins.mode2,
     });
-    try motor.start(scheduler.pri(0));
-
-    motor.setSpeed(5000);
-    motor.rotate(1000000);
 
     var led = Blinker.init(pins.led, 500_000);
     led.schedule(scheduler.pri(1));
@@ -110,11 +71,11 @@ pub fn main() !void {
     var hlt_led = Blinker.init(pins.hlt_led, 100_000);
     hlt_led.schedule(scheduler.pri(3));
 
-    var switches: Switches = .init(.{ pins.opto, pins.hlt_sw });
-    switches.schedule(scheduler.pri(4));
-
-    switches.get(.OPTO).ee.addListener(onSwitch, &.{});
-    switches.get(.HALT).ee.addListener(onSwitch, &.{});
+    var engine: Engine = .init(.{
+        .motor = &motor,
+        .switch_pins = .{ pins.opto, pins.hlt_sw },
+    });
+    try engine.schedule(scheduler.pri(0), scheduler.pri(4));
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());

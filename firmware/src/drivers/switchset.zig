@@ -24,7 +24,7 @@ pub fn SwitcheSet(comptime SwitchMap: type, max_listeners: u8) type {
 
         pub const Switch = struct {
             pin: Pin,
-            state: bool = false,
+            state: ?bool = null,
             ee: Emitter = .empty,
 
             last_state: bool = false,
@@ -49,8 +49,9 @@ pub fn SwitcheSet(comptime SwitchMap: type, max_listeners: u8) type {
         };
 
         switches: [count]Switch = undefined,
+        pub const PinConfig = [count]Pin;
 
-        pub fn init(pins: [count]Pin) Self {
+        pub fn init(pins: PinConfig) Self {
             var self: Self = .{};
             for (pins, 0..) |pin, i| {
                 self.switches[i] = .{ .pin = pin };
@@ -63,8 +64,17 @@ pub fn SwitcheSet(comptime SwitchMap: type, max_listeners: u8) type {
             slot.schedule(deadline, task, self);
         }
 
-        pub fn get(self: *Self, index: SwitchMap) *Switch {
-            return &self.switches[@backingInt(index)];
+        pub fn get(self: *Self, index: SwitchMap) ?bool {
+            return &self.switches[@backingInt(index)].state;
+        }
+
+        pub fn addListener(
+            self: *Self,
+            index: SwitchMap,
+            handler: Emitter.HandlerType,
+            ctx: *anyopaque,
+        ) void {
+            self.switches[@backingInt(index)].ee.addListener(handler, ctx);
         }
 
         fn task(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
