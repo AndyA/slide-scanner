@@ -82,19 +82,19 @@ pub fn main() !void {
         // Ensure that the host as finished enumerating our USB device
         if (usb_controller.drivers()) |drivers| {
             new = time.get_time_since_boot().to_us();
-            if (new - old > 500_000) {
+            if (new - old > 1_000_000) {
                 old = new;
                 pins.led.toggle();
                 i += 1;
                 std.log.info("cdc test: {}", .{i});
 
-                usb_cdc_write(&drivers.serial, "This is very very long text sent from RP Pico by USB CDC to your device: {}\r\n", .{i});
+                usb_cdc_write(&drivers.serial, "Boo: {}\r\n", .{i});
             }
 
             // read and print host command if present
             const message = usb_cdc_read(&drivers.serial);
             if (message.len > 0) {
-                usb_cdc_write(&drivers.serial, "Your message to me was: {s}\r\n", .{message});
+                usb_cdc_write(&drivers.serial, "Got: {s}\r\n", .{message});
             }
         }
     }
