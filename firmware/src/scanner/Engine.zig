@@ -26,6 +26,9 @@ pub const State = enum {
     RETREAT,
 };
 
+const SPEED = 40_000;
+const RANGE = 2540;
+
 config: Config = undefined,
 switches: Switches = undefined,
 state: State = .IDLE,
@@ -44,24 +47,24 @@ fn onEvent(self: *Self, event: Event) void {
     switch (self.state) {
         .IDLE => switch (self.last_opto_event) {
             .LIMIT_LEFT => {
-                m.setRemaining(10000);
-                m.setSpeed(5000);
+                m.setRemaining(RANGE * 2);
+                m.setSpeed(SPEED);
                 self.state = .ADVANCE;
             },
             else => {},
         },
         .ADVANCE => switch (event) {
             .LIMIT_ARRIVED => {
-                m.setRemaining(-5150);
-                m.setSpeed(5000);
+                m.setRemaining(-RANGE);
+                m.setSpeed(SPEED);
                 self.state = .RETREAT;
             },
             else => {},
         },
         .RETREAT => switch (event) {
             .MOTOR_STOP => {
-                m.setRemaining(10000);
-                m.setSpeed(5000);
+                m.setRemaining(RANGE * 2);
+                m.setSpeed(SPEED);
                 self.state = .ADVANCE;
             },
             else => {},
@@ -106,5 +109,5 @@ pub fn schedule(
 
     self.switches.schedule(switch_slot);
     try self.config.motor.start(motor_slot);
-    m.setSpeed(5000);
+    m.setSpeed(SPEED);
 }

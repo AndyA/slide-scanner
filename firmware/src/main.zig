@@ -79,6 +79,5 @@ pub fn main() !void {
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());
-        led.setDelay(if (pins.diag.read() == 1) 50_000 else 500_000);
     }
 }

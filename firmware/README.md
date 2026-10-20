@@ -1,2 +1,10 @@
 
 [Pico pinout](https://pico.pinout.xyz/#l=06aOPTO;11aHLT_SW;12aRST_LED;17aHLT_LED;18aSW_GND;20aDIAG;21aDIR;22aSTEP;23dGND;24aMS2;25aMS1;26ePDN%2F1k;27ePDN;29aEN;36dVDD&i=upl)
+
+## Calibration
+
+* if opto on back off to opto off `<--`
+* advance to opto on `-->`
+* retreat slightly too far `<--`
+* measure distance to opto on `-->`
+* retreat the right distance `<--`

@@ -93,7 +93,7 @@ state: State = .INIT,
 microstep: struct {
     const MS = @This();
     active: u16 = 0, // what the state machine observes
-    pending: u16 = 16, // desired; switch at next idle
+    pending: u16 = 1, // desired; switch at next idle
     current: u16 = 0, // current hardware setting when no full-step override
 
     pub fn activeOrPending(ms: MS) u16 {
