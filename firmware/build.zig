@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
         []const u8,
         "config",
         b.fmt("OpenOCD config (default \"{s}\")", .{rp_default_config}),
-    );
+    ) orelse rp_default_config;
 
     const mz_dep = b.dependency("microzig", .{});
     const mb = MicroBuild.init(b, mz_dep) orelse return;
@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) void {
             const openocd = b.addSystemCommand(&.{"openocd"});
             openocd.addArgs(&.{
                 "-f", "etc/cmis-dap.cfg", //
-                "-f", rp_config orelse rp_default_config, //
+                "-f", rp_config, //
                 "-c", "adapter speed 5000", //
                 "-c", "program zig-out/firmware/" ++ app_name ++ ".elf verify reset exit", //
             });
