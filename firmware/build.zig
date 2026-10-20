@@ -24,7 +24,7 @@ pub fn build(b: *std.Build) void {
     const rp_config = b.option(
         []const u8,
         "config",
-        b.fmt("OpenOCD config (default \"{s}\")", .{rp_default_config}),
+        "OpenOCD config (default \"" ++ rp_default_config ++ "\")",
     ) orelse rp_default_config;
 
     const mz_dep = b.dependency("microzig", .{});
