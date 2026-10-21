@@ -77,28 +77,30 @@ const TMC2209Datagram = packed struct {
     }
 
     pub fn checkCrc(self: Self) bool {
-        return generateCrc(self) == self.crc;
+        return self.calcCrc() == self.crc;
     }
 
     fn generateCrc(self: *Self) void {
         self.crc = self.calcCrc();
     }
 
-    fn asBytes(self: Self) Bytes {
-        return @bitCast(self);
-    }
-
     fn calcCrc(self: Self) u8 {
         return calculateCrc(self.asBytes()[0..@offsetOf(Self, "crc")]);
+    }
+
+    fn asBytes(self: Self) Bytes {
+        return @bitCast(self);
     }
 };
 
 test TMC2209Datagram {
     const dg: TMC2209Datagram = .initWrite(1, .FACTORY_CONF, 0x12345678);
+    try std.testing.expect(dg.checkCrc());
     try std.testing.expectEqual(0x12345678, dg.value());
     const dg2: TMC2209Datagram = .initBytes(dg.asBytes());
     try std.testing.expectEqual(0x12345678, dg2.value());
     try std.testing.expectEqual(.FACTORY_CONF, dg2.reg);
+    try std.testing.expect(dg2.checkCrc());
 }
 
 pub fn main() void {
