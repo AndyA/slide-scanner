@@ -7,6 +7,7 @@ const MicroBuild = microzig.MicroBuild(.{
 
 const firmwares: []const []const u8 = &.{
     "scanner", // default
+    "buttons",
     "playground",
 };
 
