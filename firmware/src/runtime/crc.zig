@@ -32,7 +32,7 @@ const lookup = blk: {
     break :blk table;
 };
 
-pub fn calcCrc(data: []const u8) u8 {
+pub fn calculateCrc(data: []const u8) u8 {
     var crc: u8 = 0;
     for (data) |byte| {
         crc = lookup[crc ^ byte];
@@ -40,14 +40,14 @@ pub fn calcCrc(data: []const u8) u8 {
     return @bitReverse(crc);
 }
 
-test calcCrc {
+test calculateCrc {
     var prng: std.Random.DefaultPrng = .init(123);
     var test_data: [256]u8 = undefined;
     prng.random().bytes(&test_data);
     for (0..test_data.len) |limit| {
         const slice = test_data[0 .. limit + 1];
         const ref_crc = calcCrcRef(slice);
-        const fast_crc = calcCrc(slice);
+        const fast_crc = calculateCrc(slice);
         try std.testing.expectEqual(ref_crc, fast_crc);
     }
 }
