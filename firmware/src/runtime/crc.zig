@@ -41,7 +41,9 @@ pub fn calcCrc(data: []const u8) u8 {
 }
 
 test calcCrc {
-    const test_data = "Hello, World etc";
+    var prng: std.Random.DefaultPrng = .init(123);
+    var test_data: [256]u8 = undefined;
+    prng.random().bytes(&test_data);
     for (0..test_data.len) |limit| {
         const slice = test_data[0 .. limit + 1];
         const ref_crc = calcCrcRef(slice);
