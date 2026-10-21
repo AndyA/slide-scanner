@@ -36,6 +36,16 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO8 = .{ .name = "blk_led", .direction = .out },
     .GPIO9 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
     .GPIO25 = .{ .name = "led", .direction = .out },
+
+    // Stepper
+    .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
+    .GPIO16 = .{ .name = "dir", .direction = .out },
+    .GPIO17 = .{ .name = "step", .direction = .out },
+    .GPIO18 = .{ .name = "mode2", .direction = .out },
+    .GPIO19 = .{ .name = "mode1", .direction = .out },
+    .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
+    .GPIO21 = .{ .name = "pdn_rx", .direction = .out },
+    .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
 const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
