@@ -43,33 +43,43 @@ const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
 const Scheduler = sched.makeScheduler(8);
 
-fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
-    _ = ctx;
-    std.log.info("{s} {any}", .{ @tagName(payload.which), payload.state });
-}
+const SwitchBox = struct {
+    const Self = @This();
+    pins: [4]Pin,
+
+    fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        std.log.info("{s} {any}", .{ @tagName(payload.which), payload.state });
+        if (payload.state) {
+            self.pins[@backingInt(payload.which)].toggle();
+        }
+    }
+};
+
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
     const pins = pin_config.apply();
     var scheduler: Scheduler = .empty;
 
-    var led = Blinker.init(pins.led, 500_000);
-    led.schedule(scheduler.pri(0));
-    var red_led = Blinker.init(pins.red_led, 100_000);
-    red_led.schedule(scheduler.pri(1));
-    var yel_led = Blinker.init(pins.yel_led, 110_000);
-    yel_led.schedule(scheduler.pri(2));
-    var blu_led = Blinker.init(pins.blu_led, 120_000);
-    blu_led.schedule(scheduler.pri(3));
-    var blk_led = Blinker.init(pins.blk_led, 130_000);
-    blk_led.schedule(scheduler.pri(4));
+    var box: SwitchBox = .{ .pins = .{
+        pins.red_led,
+        pins.yel_led,
+        pins.blu_led,
+        pins.blk_led,
+    } };
+    var switches: Switches = .init(.{
+        pins.red_sw,
+        pins.yel_sw,
+        pins.blu_sw,
+        pins.blk_sw,
+    });
 
-    var switches: Switches = .init(.{ pins.red_sw, pins.yel_sw, pins.blu_sw, pins.blk_sw });
-    switches.addListener(.RED, onSwitch, &.{});
-    switches.addListener(.YEL, onSwitch, &.{});
-    switches.addListener(.BLU, onSwitch, &.{});
-    switches.addListener(.BLK, onSwitch, &.{});
-    switches.schedule(scheduler.pri(5));
+    switches.addListener(.RED, SwitchBox.onSwitch, &box);
+    switches.addListener(.YEL, SwitchBox.onSwitch, &box);
+    switches.addListener(.BLU, SwitchBox.onSwitch, &box);
+    switches.addListener(.BLK, SwitchBox.onSwitch, &box);
+    switches.schedule(scheduler.pri(0));
 
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());
