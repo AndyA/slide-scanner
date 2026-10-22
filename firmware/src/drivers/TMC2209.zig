@@ -78,7 +78,7 @@ pub const Register = enum(u7) {
     PWM_AUTO = 0x72, // R
 };
 
-const Datagram = packed struct {
+pub const Datagram = packed struct {
     const Bytes = [@sizeOf(Datagram)]u8;
 
     sync: u8 = 0b00000101,
@@ -91,6 +91,10 @@ const Datagram = packed struct {
     comptime {
         assert(@sizeOf(Datagram) == 8);
         assert(@offsetOf(Datagram, "crc") == 7);
+    }
+
+    fn calcCrc(self: Datagram) u8 {
+        return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
     }
 
     pub fn initRead(addr: u8, reg: Register) Datagram {
@@ -127,11 +131,7 @@ const Datagram = packed struct {
         return self.calcCrc() == self.crc;
     }
 
-    fn calcCrc(self: Datagram) u8 {
-        return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
-    }
-
-    fn toBytes(self: Datagram) Bytes {
+    pub fn toBytes(self: Datagram) Bytes {
         return @bitCast(self);
     }
 };
