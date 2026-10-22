@@ -83,7 +83,7 @@ pub const Datagram = packed struct {
         assert(@sizeOf(Datagram) == 8);
         assert(@offsetOf(Datagram, "crc") == 7);
     }
-    const Bytes = [@sizeOf(Datagram)]u8;
+    pub const Bytes = [@sizeOf(Datagram)]u8;
 
     sync: u8 = 0b00000101,
     addr: u8,
