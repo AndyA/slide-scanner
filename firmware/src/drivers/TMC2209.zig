@@ -128,10 +128,10 @@ const Datagram = packed struct {
     }
 
     fn calcCrc(self: Datagram) u8 {
-        return calculateCrc(self.asBytes()[0..@offsetOf(Datagram, "crc")]);
+        return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
     }
 
-    fn asBytes(self: Datagram) Bytes {
+    fn toBytes(self: Datagram) Bytes {
         return @bitCast(self);
     }
 };
@@ -140,7 +140,7 @@ test Datagram {
     const dg: Datagram = .initWrite(1, .FACTORY_CONF, 0x12345678);
     try std.testing.expect(dg.checkCrc());
     try std.testing.expectEqual(0x12345678, dg.value());
-    const dg2: Datagram = .initBytes(dg.asBytes());
+    const dg2: Datagram = .initBytes(dg.toBytes());
     try std.testing.expectEqual(0x12345678, dg2.value());
     try std.testing.expectEqual(.FACTORY_CONF, dg2.reg);
     try std.testing.expect(dg2.checkCrc());
