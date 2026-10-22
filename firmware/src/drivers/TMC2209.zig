@@ -140,6 +140,7 @@ test Datagram {
     const dg: Datagram = .initWrite(1, .FACTORY_CONF, 0x12345678);
     try std.testing.expect(dg.checkCrc());
     try std.testing.expectEqual(0x12345678, dg.value());
+
     const dg2: Datagram = .initBytes(dg.toBytes());
     try std.testing.expectEqual(0x12345678, dg2.value());
     try std.testing.expectEqual(.FACTORY_CONF, dg2.reg);
