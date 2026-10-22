@@ -8,5 +8,6 @@ pub fn main() void {
 test {
     _ = @import("runtime/events.zig");
     _ = @import("runtime/tools.zig");
+    _ = @import("runtime/promise.zig");
     _ = @import("drivers/TMC2209.zig");
 }
