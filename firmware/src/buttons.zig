@@ -68,26 +68,6 @@ const SwitchBox = struct {
     }
 };
 
-const TMC2209Datagram = packed struct {
-    const Self = @This();
-
-    sync: u8 = 0b00000101,
-    addr: u8,
-    reg: u7,
-    write: bool,
-    data: u32, // big endian
-    crc: u8,
-
-    fn calcCrc(self: Self) u8 {
-        const bytes: [@sizeOf(TMC2209Datagram)]u8 = @bitCast(self);
-        _ = bytes;
-    }
-};
-
-comptime {
-    assert(@sizeOf(TMC2209Datagram) == 8);
-}
-
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
