@@ -93,6 +93,9 @@ pub fn main() !void {
     switches.addListener(.BLK, SwitchBox.onSwitch, &box);
     switches.schedule(scheduler.pri(0));
 
+    var blinker: Blinker = .init(pins.led, 250_000);
+    blinker.schedule(scheduler.pri(1));
+
     while (true) {
         _ = try scheduler.poll(time.get_time_since_boot());
     }
