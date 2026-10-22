@@ -23,7 +23,7 @@ fn calcCrcRef(data: []const u8) u8 {
 }
 
 const lookup = blk: {
-    @setEvalBranchQuota(25000);
+    @setEvalBranchQuota(3000);
     var table: [256]u8 = undefined;
     for (&table, 0..) |*e, i| {
         e.* = @bitReverse(nextCrc(0, @intCast(i)));
