@@ -79,6 +79,10 @@ pub const Register = enum(u7) {
 };
 
 pub const Datagram = packed struct {
+    comptime {
+        assert(@sizeOf(Datagram) == 8);
+        assert(@offsetOf(Datagram, "crc") == 7);
+    }
     const Bytes = [@sizeOf(Datagram)]u8;
 
     sync: u8 = 0b00000101,
@@ -87,11 +91,6 @@ pub const Datagram = packed struct {
     write: bool,
     data: u32, // big endian
     crc: u8 = undefined,
-
-    comptime {
-        assert(@sizeOf(Datagram) == 8);
-        assert(@offsetOf(Datagram, "crc") == 7);
-    }
 
     fn calcCrc(self: Datagram) u8 {
         return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
