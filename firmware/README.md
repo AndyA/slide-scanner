@@ -11,3 +11,9 @@
 ## References
 
 [TMC2209 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/TMC2209_datasheet_rev1.09.pdf)
+
+## Build
+
+```sh
+zig build buttons -Dconfig=etc/rp2040.old.cfg -Dprogram --watch
+```

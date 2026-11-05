@@ -9,6 +9,7 @@ const firmwares: []const []const u8 = &.{
     "scanner", // default
     "buttons",
     "playground",
+    "uart",
 };
 
 pub fn build(b: *std.Build) void {

@@ -10,6 +10,8 @@ const sched = @import("runtime/scheduler.zig");
 const Blinker = @import("drivers/Blinker.zig");
 const switchset = @import("drivers/switchset.zig");
 
+const uart = hal.uart.instance.num(0);
+
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
     .logFn = hal.uart.log,
@@ -73,6 +75,9 @@ pub fn main() !void {
     std.log.info("Starting...", .{});
     const pins = pin_config.apply();
     var scheduler: Scheduler = .empty;
+
+    pins.pdn_tx.set_function(.uart);
+    pins.pdn_rx.set_function(.uart);
 
     var box: SwitchBox = .{ .pins = .{
         pins.red_led,
