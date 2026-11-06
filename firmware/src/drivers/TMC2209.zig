@@ -149,126 +149,143 @@ test Datagram {
     try std.testing.expectEqual(.FACTORY_CONF, dg2.reg);
     try std.testing.expect(dg2.checkCrc());
 }
-const Self = @This();
 
-pub const State = enum(u8) {
-    IDLE,
-    WRITING,
-    DISCARDING,
-    READING,
-    RETRY_WAIT,
-};
+pub const SerialIO = struct {
+    const Self = @This();
 
-pub const Event = union(enum) {
-    err: void,
-    received: Datagram,
-};
-
-const Emitter = events.Emitter(Event, 5);
-
-u: hal.uart.UART,
-state: State = .IDLE,
-ee: Emitter = .empty,
-tx_buf: Datagram.Bytes = undefined,
-rx_buf: Datagram.Bytes = undefined,
-pos: u8 = undefined,
-tries: u8 = undefined,
-deadline: time.Absolute = undefined,
-
-pub fn init(u: hal.uart.UART) Self {
-    return .{ .u = u };
-}
-
-fn setWriting(self: Self, enable: bool) void {
-    const regs = self.u.get_regs();
-    regs.UARTCR.modify(.{ .TXE = @intCast(enable) });
-}
-
-fn writeNonBlocking(self: *Self) void {
-    const regs = self.u.get_regs();
-    assert(self.pos < self.tx_buf.len);
-    while (self.pos < self.tx_buf.len and self.u.is_writeable()) {
-        regs.UARTDR.write_raw(self.tx_buf[self.pos]);
-        self.pos += 1;
-    }
-}
-
-fn readByte(self: *Self) !?u8 {
-    return self.u.read_word() catch |e| {
-        self.u.clear_errors();
-        if (self.tries == 0) {
-            self.ee.emit(.{ .err = {} });
-            self.goState(.IDLE);
-        } else {
-            self.tries -= 1;
-            const now = time.get_time_since_boot();
-            self.deadline = now.add_duration(time.Duration.from_ms(10));
-            self.goState(.RETRY_WAIT);
-        }
-        // TODO goto WAITING, set timeout etc
-        self.state = .RETRY_WAIT;
-        return e;
+    pub const State = enum(u8) {
+        IDLE,
+        WRITING,
+        DISCARDING,
+        READING,
+        RETRY_WAIT,
     };
-}
 
-fn discardNonBlocking(self: *Self) !void {
-    assert(self.pos < self.tx_buf.len);
-    while (self.pos < self.tx_buf.len) : (self.pos += 1) {
-        if (try self.readByte() == null) break;
+    pub const Event = union(enum) {
+        err: void,
+        timeout: void,
+        received: Datagram,
+    };
+
+    const Emitter = events.Emitter(Event, 5);
+
+    const RETRY_DELAY = time.Duration.from_ms(1);
+    const TIMEOUT = time.Duration.from_ms(100);
+
+    u: hal.uart.UART,
+    state: State = .IDLE,
+    ee: Emitter = .empty,
+    tx_buf: Datagram.Bytes = undefined,
+    rx_buf: Datagram.Bytes = undefined,
+    pos: u8 = undefined,
+    tries: u8 = undefined,
+    delay: time.Absolute = undefined,
+    timeout: time.Absolute = undefined,
+
+    pub fn init(u: hal.uart.UART) Self {
+        return .{ .u = u };
     }
-}
 
-fn readNonBlocking(self: *Self) !void {
-    assert(self.pos < self.rx_buf.len);
-    while (self.pos < self.rx_buf.len) : (self.pos += 1) {
-        if (try self.readByte()) |b|
-            self.rx_buf[self.pos] = b
-        else
-            break;
+    fn setWriting(self: Self, enable: bool) void {
+        const regs = self.u.get_regs();
+        regs.UARTCR.modify(.{ .TXE = @intCast(enable) });
     }
-}
 
-pub fn send(self: *Self, dg: Datagram) void {
-    assert(self.state == .IDLE);
-    self.tx_buf = dg.toBytes();
-    self.tries = 5;
-    self.goState(.WRITING);
-}
-
-fn goState(self: *Self, state: State) void {
-    self.state = state;
-    self.pos = 0;
-    self.setWriting(state == .WRITING);
-}
-
-pub fn poll(self: *Self) void {
-    switch (self.state) {
-        .IDLE => {},
-        .WRITING => {
-            self.writeNonBlocking();
-            if (self.pos == self.tx_buf.len) {
-                self.goState(.DISCARDING);
-                self.setWriting(false);
-            }
-        },
-        .DISCARDING => {
-            self.discardNonBlocking() catch return;
-            if (self.pos == self.tx_buf.len) {
-                self.goState(.READING);
-            }
-        },
-        .READING => {
-            self.readNonBlocking() catch return;
-            if (self.pos == self.rx_buf.len) {
-                self.ee.emit(.{ .received = Datagram.initBytes(&self.rx_buf) }) catch {};
-                self.goState(.IDLE);
-            }
-        },
-        .RETRY_WAIT => {
-            if (self.deadline.is_reached_by(time.get_time_since_boot())) {
-                self.goState(.WRITING);
-            }
-        },
-        else => unreachable,
+    fn writeNonBlocking(self: *Self) void {
+        const regs = self.u.get_regs();
+        assert(self.pos < self.tx_buf.len);
+        while (self.pos < self.tx_buf.len and self.u.is_writeable()) {
+            regs.UARTDR.write_raw(self.tx_buf[self.pos]);
+            self.pos += 1;
+        }
     }
-}
+
+    fn emitAndIdle(self: *Self, event: Event) void {
+        self.ee.emit(event) catch {};
+        self.goState(.IDLE);
+    }
+
+    fn readByte(self: *Self) !?u8 {
+        return self.u.read_word() catch |e| {
+            self.u.clear_errors();
+            if (self.tries == 0) {
+                self.emitAndIdle(.{ .err = {} });
+            } else {
+                self.tries -= 1;
+                const now = time.get_time_since_boot();
+                self.delay = now.add_duration(RETRY_DELAY);
+                self.goState(.RETRY_WAIT);
+            }
+            return e;
+        };
+    }
+
+    fn discardNonBlocking(self: *Self) !void {
+        assert(self.pos < self.tx_buf.len);
+        while (self.pos < self.tx_buf.len) : (self.pos += 1) {
+            if (try self.readByte() == null) break;
+        }
+    }
+
+    fn readNonBlocking(self: *Self) !void {
+        assert(self.pos < self.rx_buf.len);
+        while (self.pos < self.rx_buf.len) : (self.pos += 1) {
+            if (try self.readByte()) |b|
+                self.rx_buf[self.pos] = b
+            else
+                break;
+        }
+    }
+
+    pub fn send(self: *Self, dg: Datagram) void {
+        assert(self.state == .IDLE);
+        self.tx_buf = dg.toBytes();
+        self.tries = 5;
+        self.timeout = time.get_time_since_boot.add_duration(TIMEOUT);
+        self.goState(.WRITING);
+    }
+
+    fn goState(self: *Self, state: State) void {
+        self.state = state;
+        self.pos = 0;
+        self.setWriting(state == .WRITING);
+    }
+
+    pub fn poll(self: *Self) void {
+        const now = time.get_time_since_boot();
+
+        if (self.state != .IDLE) {
+            if (self.timeout.is_reached_by(now)) {
+                self.emitAndIdle(.{ .timeout = {} });
+                return;
+            }
+        }
+
+        switch (self.state) {
+            .IDLE => {},
+            .WRITING => {
+                self.writeNonBlocking();
+                if (self.pos == self.tx_buf.len) {
+                    self.goState(.DISCARDING);
+                }
+            },
+            .DISCARDING => {
+                self.discardNonBlocking() catch return;
+                if (self.pos == self.tx_buf.len) {
+                    self.goState(.READING);
+                }
+            },
+            .READING => {
+                self.readNonBlocking() catch return;
+                if (self.pos == self.rx_buf.len) {
+                    self.emitAndIdle(.{ .received = Datagram.initBytes(&self.rx_buf) });
+                }
+            },
+            .RETRY_WAIT => {
+                if (self.delay.is_reached_by(now)) {
+                    self.goState(.WRITING);
+                }
+            },
+        }
+    }
+};
