@@ -80,9 +80,22 @@ pub fn makeScheduler(comptime size: u8) type {
 
         slots: [size]ScheduleSlot = @splat(.{}),
 
+        fn adjustPriority(self: *Self, pos: usize) void {
+            for (pos + 1..size, pos..) |hi, lo| {
+                if (self.slots[hi].deadline.is_reached_by(self.slots[lo].deadline)) {
+                    const t = self.slots[lo];
+                    self.slots[lo] = self.slots[hi];
+                    self.slots[hi] = t;
+                }
+            }
+        }
+
         pub fn pollWithHook(self: *Self, now: time.Absolute, hook: ?SchedulerHook) !bool {
-            for (&self.slots) |*slot| {
-                if (try slot.pollWithHook(now, hook)) return true;
+            for (&self.slots, 0..) |*slot, pos| {
+                if (try slot.pollWithHook(now, hook)) {
+                    self.adjustPriority(pos);
+                    return true;
+                }
             }
             return false;
         }
