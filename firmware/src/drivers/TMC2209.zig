@@ -183,7 +183,9 @@ pub const SerialIO = struct {
     timeout: time.Absolute = undefined,
 
     pub fn init(u: hal.uart.UART) Self {
-        return .{ .u = u };
+        const self = .{ .u = u };
+        self.setWriting(1);
+        return self;
     }
 
     fn setWriting(self: Self, enable: bool) void {
@@ -248,7 +250,7 @@ pub const SerialIO = struct {
     fn goState(self: *Self, state: State) void {
         self.state = state;
         self.pos = 0;
-        self.setWriting(state == .WRITING);
+        // self.setWriting(state == .WRITING);
     }
 
     pub fn poll(self: *Self) void {

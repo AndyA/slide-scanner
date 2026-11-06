@@ -55,7 +55,8 @@ const pin_config = hal.pins.GlobalConfiguration{
 const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
-const Scheduler = sched.makeScheduler(8);
+const FastScheduler = sched.makeScheduler(8);
+const SlowScheduler = sched.makeNestedScheduler(8, 250);
 
 const SwitchBox = struct {
     const Self = @This();
@@ -74,7 +75,10 @@ pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
     const pins = pin_config.apply();
-    var scheduler: Scheduler = .empty;
+    var root_scheduler: FastScheduler = .empty;
+    var slow_scheduler: SlowScheduler = .empty;
+
+    slow_scheduler.schedule(root_scheduler.pri(-1));
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
@@ -96,12 +100,12 @@ pub fn main() !void {
     switches.addListener(.YEL, SwitchBox.onSwitch, &box);
     switches.addListener(.BLU, SwitchBox.onSwitch, &box);
     switches.addListener(.BLK, SwitchBox.onSwitch, &box);
-    switches.schedule(scheduler.pri(0));
+    switches.schedule(slow_scheduler.pri(0));
 
     var blinker: Blinker = .init(pins.led, 250_000);
-    blinker.schedule(scheduler.pri(1));
+    blinker.schedule(slow_scheduler.pri(1));
 
     while (true) {
-        _ = try scheduler.poll(time.get_time_since_boot());
+        _ = try root_scheduler.poll(time.get_time_since_boot());
     }
 }

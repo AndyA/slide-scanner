@@ -100,3 +100,27 @@ pub fn makeScheduler(comptime size: u8) type {
         }
     };
 }
+
+pub fn makeNestedScheduler(comptime size: u8, comptime every_us: u64) type {
+    const Scheduler = makeScheduler(size);
+    return struct {
+        const Self = @This();
+        scheduler: Scheduler = .empty,
+        pub const empty: Self = .{};
+
+        pub fn pri(self: *Self, index: i9) *ScheduleSlot {
+            return self.scheduler.pri(index);
+        }
+
+        pub fn schedule(self: *Self, slot: *ScheduleSlot) void {
+            const deadline = slot.now.add_duration(time.Duration.from_us(every_us));
+            slot.schedule(deadline, task, self);
+        }
+
+        fn task(ctx: *anyopaque, slot: *ScheduleSlot) !void {
+            const self: *Self = @ptrCast(@alignCast(ctx));
+            _ = try self.scheduler.poll(slot.now);
+            self.schedule(slot);
+        }
+    };
+}
