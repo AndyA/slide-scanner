@@ -115,10 +115,9 @@ pub fn makeScheduler(comptime size: u8) type {
 }
 
 pub fn makeNestedScheduler(comptime size: u8, comptime every_us: u64) type {
-    const Scheduler = makeScheduler(size);
     return struct {
         const Self = @This();
-        scheduler: Scheduler = .empty,
+        scheduler: makeScheduler(size) = .empty,
         pub const empty: Self = .{};
 
         pub fn pri(self: *Self, index: i9) *ScheduleSlot {
