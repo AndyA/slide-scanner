@@ -56,7 +56,7 @@ const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
 const FastScheduler = sched.makeScheduler(8);
-const SlowScheduler = sched.makeNestedScheduler(8, 250);
+const SlowScheduler = sched.makeNestedScheduler(8, 1000);
 
 const SwitchBox = struct {
     const Self = @This();
