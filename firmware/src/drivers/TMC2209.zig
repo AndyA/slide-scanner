@@ -265,6 +265,7 @@ pub const SerialIO = struct {
         self.tries = 5;
         self.timeout = hal.time.get_time_since_boot().add_duration(TIMEOUT);
         self.goState(.WRITING);
+        // self.tx_pin.set_direction(.out);
     }
 
     fn goState(self: *Self, state: State) void {
@@ -289,6 +290,7 @@ pub const SerialIO = struct {
             .WRITING => {
                 self.writeNonBlocking();
                 if (self.pos == self.tx_buf.len) {
+                    // self.tx_pin.set_direction(.in);
                     self.goState(.DISCARDING);
                 }
             },
