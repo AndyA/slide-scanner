@@ -197,6 +197,7 @@ pub const SerialIO = struct {
         const regs = self.u.get_regs();
         assert(self.pos < self.tx_buf.len);
         while (self.pos < self.tx_buf.len and self.u.is_writeable()) {
+            std.log.debug("wrote 0x{x:0>2}", .{self.tx_buf[self.pos]});
             regs.UARTDR.write_raw(self.tx_buf[self.pos]);
             self.pos += 1;
         }
@@ -208,7 +209,7 @@ pub const SerialIO = struct {
     }
 
     fn readByte(self: *Self) !?u8 {
-        return self.u.read_word() catch |e| {
+        const byte = self.u.read_word() catch |e| {
             self.u.clear_errors();
             if (self.tries == 0) {
                 self.emitAndIdle(.{ .err = {} });
@@ -220,6 +221,8 @@ pub const SerialIO = struct {
             }
             return e;
         };
+        if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
+        return byte;
     }
 
     fn discardNonBlocking(self: *Self) !void {

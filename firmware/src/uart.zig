@@ -17,22 +17,6 @@ comptime {
     _ = microzig.export_startup();
 }
 
-fn prime_tx_fifo(u: hal.uart.UART, src: []const u8) usize {
-    const uart_regs = u.get_regs();
-    uart_regs.UARTCR.modify(.{
-        .TXE = 0,
-    });
-    var tx_remaining = src.len;
-    while (tx_remaining > 0 and u.is_writeable()) {
-        uart_regs.UARTDR.write_raw(src[src.len - tx_remaining]);
-        tx_remaining -= 1;
-    }
-    uart_regs.UARTCR.modify(.{
-        .TXE = 1,
-    });
-    return src.len - tx_remaining;
-}
-
 pub fn main() !void {
     led.set_function(.sio);
     led.set_direction(.out);

@@ -48,7 +48,7 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO18 = .{ .name = "mode2", .direction = .out },
     .GPIO19 = .{ .name = "mode1", .direction = .out },
     .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
-    .GPIO21 = .{ .name = "pdn_rx", .direction = .out },
+    .GPIO21 = .{ .name = "pdn_rx", .direction = .in },
     .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
@@ -76,7 +76,7 @@ const uart = hal.uart.instance.num(1);
 const SerialTask = struct {
     const Self = @This();
 
-    const PERIOD = 50;
+    const PERIOD = 500;
 
     sio: TMC2209.SerialIO = undefined,
 
@@ -120,6 +120,10 @@ pub fn main() !void {
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
+
+    uart.apply(.{
+        .clock_config = hal.clock_config,
+    });
 
     var ser: SerialTask = .init(uart);
     ser.schedule(root_scheduler.pri(0));
