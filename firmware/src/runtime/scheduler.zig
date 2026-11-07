@@ -43,6 +43,13 @@ pub const ScheduleSlot = struct {
         self.deadline = self.now.add_duration(time.Duration.from_us(delay_us));
     }
 
+    pub fn lastScheduled(self: *Self) time.Absolute {
+        // If we have never been scheduled fall back to now
+        if (self.then == Never)
+            return self.now;
+        return self.then;
+    }
+
     pub fn pollWithHook(self: *Self, now: time.Absolute, hook: ?SchedulerHook) !bool {
         if (self.deadline.is_reached_by(now)) {
             self.then = self.now; // remember when we were scheduled
@@ -61,13 +68,6 @@ pub const ScheduleSlot = struct {
         return false;
     }
 
-    pub fn lastScheduled(self: *Self) time.Absolute {
-        // If we have never been scheduled fall back to now
-        if (self.then == Never)
-            return self.now;
-        return self.then;
-    }
-
     pub fn poll(self: *Self, now: time.Absolute) !bool {
         return try self.pollWithHook(now, null);
     }
@@ -80,12 +80,12 @@ pub fn makeScheduler(comptime size: u8) type {
 
         slots: [size]ScheduleSlot = @splat(.{}),
 
-        fn adjustPriority(self: *Self, pos: usize) void {
+        fn adjustPriority(self: *Self, now: time.Absolute, pos: usize) void {
             for (pos + 1..size, pos..) |hi, lo| {
-                if (self.slots[hi].deadline.is_reached_by(self.slots[lo].deadline)) {
-                    const t = self.slots[lo];
-                    self.slots[lo] = self.slots[hi];
-                    self.slots[hi] = t;
+                const lo_dl = self.slots[lo].deadline;
+                const hi_dl = self.slots[hi].deadline;
+                if (hi_dl.is_reached_by(now) and hi_dl.is_reached_by(lo_dl)) {
+                    std.mem.swap(ScheduleSlot, &self.slots[lo], &self.slots[hi]);
                 }
             }
         }
@@ -93,7 +93,7 @@ pub fn makeScheduler(comptime size: u8) type {
         pub fn pollWithHook(self: *Self, now: time.Absolute, hook: ?SchedulerHook) !bool {
             for (&self.slots, 0..) |*slot, pos| {
                 if (try slot.pollWithHook(now, hook)) {
-                    self.adjustPriority(pos);
+                    self.adjustPriority(now, pos);
                     return true;
                 }
             }
