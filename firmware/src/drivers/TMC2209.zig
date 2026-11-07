@@ -96,6 +96,16 @@ pub const Datagram = packed struct {
     data: u32, // big endian
     crc: u8 = undefined,
 
+    pub fn format(self: Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try w.print("{s} {d}/{s} 0x{x:0>8} (crc {s})", .{
+            if (self.write) "write" else "read",
+            self.addr,
+            @tagName(self.reg),
+            self.value(),
+            if (self.checkCrc()) "ok" else "bad",
+        });
+    }
+
     fn calcCrc(self: Datagram) u8 {
         return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
     }
@@ -170,7 +180,7 @@ pub const SerialIO = struct {
     const Emitter = events.Emitter(Event, 5);
 
     const RETRY_DELAY = time.Duration.from_ms(1);
-    const TIMEOUT = time.Duration.from_ms(200);
+    const TIMEOUT = time.Duration.from_ms(1000);
 
     u: hal.uart.UART,
     state: State = .IDLE,
@@ -197,15 +207,15 @@ pub const SerialIO = struct {
         const regs = self.u.get_regs();
         assert(self.pos < self.tx_buf.len);
         while (self.pos < self.tx_buf.len and self.u.is_writeable()) {
-            std.log.debug("wrote 0x{x:0>2}", .{self.tx_buf[self.pos]});
+            // std.log.debug("wrote 0x{x:0>2}", .{self.tx_buf[self.pos]});
             regs.UARTDR.write_raw(self.tx_buf[self.pos]);
             self.pos += 1;
         }
     }
 
     fn emitAndIdle(self: *Self, event: Event) void {
-        self.ee.emit(event) catch {};
         self.goState(.IDLE);
+        self.ee.emit(event) catch {};
     }
 
     fn readByte(self: *Self) !?u8 {
@@ -221,7 +231,7 @@ pub const SerialIO = struct {
             }
             return e;
         };
-        if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
+        // if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
         return byte;
     }
 
@@ -272,7 +282,7 @@ pub const SerialIO = struct {
             .WRITING => {
                 self.writeNonBlocking();
                 if (self.pos == self.tx_buf.len) {
-                    self.goState(.DISCARDING);
+                    self.goState(.READING);
                 }
             },
             .DISCARDING => {

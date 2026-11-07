@@ -76,12 +76,14 @@ const uart = hal.uart.instance.num(1);
 const SerialTask = struct {
     const Self = @This();
 
-    const PERIOD = 500;
+    const PERIOD = 100;
 
     sio: TMC2209.SerialIO = undefined,
+    sequence: []const TMC2209.Datagram = undefined,
+    pos: u8 = 0,
 
-    pub fn init(u: hal.uart.UART) Self {
-        return .{ .sio = .init(u) };
+    pub fn init(u: hal.uart.UART, sequence: []const TMC2209.Datagram) Self {
+        return .{ .sio = .init(u), .sequence = sequence };
     }
 
     fn reSchedule(self: *Self, slot: *sched.ScheduleSlot) void {
@@ -100,11 +102,31 @@ const SerialTask = struct {
         self.reSchedule(slot);
     }
 
+    fn nextDatagram(self: *Self) ?TMC2209.Datagram {
+        if (self.pos == self.sequence.len)
+            return null;
+        defer self.pos += 1;
+        return self.sequence[self.pos];
+    }
+
+    pub fn pump(self: *Self) void {
+        if (self.nextDatagram()) |dg| {
+            std.log.info("sending {f}", .{dg});
+            self.sio.send(dg);
+        }
+        std.log.info("All Datagrams sent", .{});
+    }
+
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
-        _ = ctx;
+        const self: *Self = @ptrCast(@alignCast(ctx));
         switch (payload) {
-            .received => |dg| std.log.info("event {s}: {x}", .{ @tagName(payload), dg.value() }),
-            else => std.log.info("event {s}", .{@tagName(payload)}),
+            .received => |dg| {
+                std.log.info("{s} {f}", .{ @tagName(payload), dg });
+                self.pump();
+            },
+            else => {
+                std.log.info("{s}", .{@tagName(payload)});
+            },
         }
     }
 };
@@ -125,7 +147,11 @@ pub fn main() !void {
         .clock_config = hal.clock_config,
     });
 
-    var ser: SerialTask = .init(uart);
+    var ser: SerialTask = .init(uart, &.{
+        TMC2209.Datagram.initRead(0, .CHOPCONF),
+        TMC2209.Datagram.initWrite(0, .CHOPCONF, 0xaa),
+        TMC2209.Datagram.initRead(0, .CHOPCONF),
+    });
     ser.schedule(root_scheduler.pri(0));
 
     var box: SwitchBox = .{ .pins = .{
@@ -134,6 +160,7 @@ pub fn main() !void {
         pins.blu_led,
         pins.blk_led,
     } };
+
     var switches: Switches = .init(.{
         pins.red_sw,
         pins.yel_sw,
@@ -150,7 +177,8 @@ pub fn main() !void {
     var blinker: Blinker = .init(pins.led, 250_000);
     blinker.schedule(slow_scheduler.pri(1));
 
-    ser.sio.send(TMC2209.Datagram.initRead(0, .GCONF));
+    pins.en.put(0);
+    ser.pump();
 
     while (true) {
         _ = try root_scheduler.poll(hal.time.get_time_since_boot());
