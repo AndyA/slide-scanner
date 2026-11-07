@@ -10,6 +10,7 @@ const firmwares: []const []const u8 = &.{
     "buttons",
     "playground",
     "uart",
+    "usb_cdc",
 };
 
 pub fn build(b: *std.Build) void {

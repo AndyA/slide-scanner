@@ -170,7 +170,7 @@ pub const SerialIO = struct {
     const Emitter = events.Emitter(Event, 5);
 
     const RETRY_DELAY = time.Duration.from_ms(1);
-    const TIMEOUT = time.Duration.from_ms(100);
+    const TIMEOUT = time.Duration.from_ms(200);
 
     u: hal.uart.UART,
     state: State = .IDLE,
@@ -183,14 +183,14 @@ pub const SerialIO = struct {
     timeout: time.Absolute = undefined,
 
     pub fn init(u: hal.uart.UART) Self {
-        const self = .{ .u = u };
-        self.setWriting(1);
+        const self: Self = .{ .u = u };
+        self.setWriting(true);
         return self;
     }
 
     fn setWriting(self: Self, enable: bool) void {
         const regs = self.u.get_regs();
-        regs.UARTCR.modify(.{ .TXE = @intCast(enable) });
+        regs.UARTCR.modify(.{ .TXE = @as(u1, if (enable) 1 else 0) });
     }
 
     fn writeNonBlocking(self: *Self) void {
@@ -214,7 +214,7 @@ pub const SerialIO = struct {
                 self.emitAndIdle(.{ .err = {} });
             } else {
                 self.tries -= 1;
-                const now = time.get_time_since_boot();
+                const now = hal.time.get_time_since_boot();
                 self.delay = now.add_duration(RETRY_DELAY);
                 self.goState(.RETRY_WAIT);
             }
@@ -243,18 +243,19 @@ pub const SerialIO = struct {
         assert(self.state == .IDLE);
         self.tx_buf = dg.toBytes();
         self.tries = 5;
-        self.timeout = time.get_time_since_boot.add_duration(TIMEOUT);
+        self.timeout = hal.time.get_time_since_boot().add_duration(TIMEOUT);
         self.goState(.WRITING);
     }
 
     fn goState(self: *Self, state: State) void {
         self.state = state;
         self.pos = 0;
+        std.log.debug("goState {s}", .{@tagName(state)});
         // self.setWriting(state == .WRITING);
     }
 
     pub fn poll(self: *Self) void {
-        const now = time.get_time_since_boot();
+        const now = hal.time.get_time_since_boot();
 
         if (self.state != .IDLE) {
             if (self.timeout.is_reached_by(now)) {
@@ -280,7 +281,7 @@ pub const SerialIO = struct {
             .READING => {
                 self.readNonBlocking() catch return;
                 if (self.pos == self.rx_buf.len) {
-                    self.emitAndIdle(.{ .received = Datagram.initBytes(&self.rx_buf) });
+                    self.emitAndIdle(.{ .received = Datagram.initBytes(self.rx_buf) });
                 }
             },
             .RETRY_WAIT => {

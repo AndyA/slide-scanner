@@ -1,44 +1,19 @@
 const std = @import("std");
 const microzig = @import("microzig");
-
 const hal = microzig.hal;
-const time = hal.time;
-const usb = microzig.core.usb;
-// Port-specific type which implements the DeviceInterface interface, used by the USB core to
-// read from/write to the peripheral.
-const USB_Device = hal.usb.Polled(.{});
-// USB class driver
-const USB_Serial = usb.drivers.CDC;
+const time = microzig.drivers.time;
 
-var usb_device: USB_Device = undefined;
+const assert = std.debug.assert;
 
-// Generate a device controller with descriptor and handlers setup for CDC (USB_Serial) and
-// picotool-controlled reset (ResetDriver).
-var usb_controller: usb.DeviceController(.{
-    .bcd_usb = USB_Device.max_supported_bcd_usb,
-    .device_triple = .unspecified,
-    .vendor = USB_Device.default_vendor_id,
-    .product = USB_Device.default_product_id,
-    .bcd_device = .v1_00,
-    .serial = "scanner",
-    .max_supported_packet_size = USB_Device.max_supported_packet_size,
-    .configurations = &.{.{
-        .attributes = .{ .self_powered = false },
-        .max_current_ma = 50,
-        .Drivers = struct { serial: USB_Serial, reset: hal.usb.ResetDriver(null, 0) },
-    }},
-}, .{.{
-    .serial = .{ .itf_notifi = "Board CDC", .itf_data = "Board CDC Data" },
-    .reset = "",
-}}) = .init;
+const logging = @import("runtime/logging.zig");
+const sched = @import("runtime/scheduler.zig");
+const Blinker = @import("drivers/Blinker.zig");
+const switchset = @import("drivers/switchset.zig");
+
+const TMC2209 = @import("drivers/TMC2209.zig");
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
-    .log_scope_levels = &.{
-        .{ .scope = .usb_dev, .level = .warn },
-        .{ .scope = .usb_ctrl, .level = .warn },
-        .{ .scope = .usb_cdc, .level = .warn },
-    },
     .logFn = hal.uart.log,
 });
 
@@ -52,84 +27,128 @@ pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noretu
     while (true) {}
 }
 
-const pin_config: hal.pins.GlobalConfiguration = .{
-    .GPIO0 = .{ .function = .UART0_TX },
+const Pin = hal.gpio.Pin;
+
+// Compile-time pin configuration
+const pin_config = hal.pins.GlobalConfiguration{
+    .GPIO2 = .{ .name = "red_led", .direction = .out },
+    .GPIO3 = .{ .name = "red_sw", .direction = .in, .pull = .up },
+    .GPIO4 = .{ .name = "yel_led", .direction = .out },
+    .GPIO5 = .{ .name = "yel_sw", .direction = .in, .pull = .up },
+    .GPIO6 = .{ .name = "blu_led", .direction = .out },
+    .GPIO7 = .{ .name = "blu_sw", .direction = .in, .pull = .up },
+    .GPIO8 = .{ .name = "blk_led", .direction = .out },
+    .GPIO9 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
     .GPIO25 = .{ .name = "led", .direction = .out },
+
+    // Stepper
+    .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
+    .GPIO16 = .{ .name = "dir", .direction = .out },
+    .GPIO17 = .{ .name = "step", .direction = .out },
+    .GPIO18 = .{ .name = "mode2", .direction = .out },
+    .GPIO19 = .{ .name = "mode1", .direction = .out },
+    .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
+    .GPIO21 = .{ .name = "pdn_rx", .direction = .out },
+    .GPIO22 = .{ .name = "en", .direction = .out },
+};
+
+const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
+const Switches = switchset.SwitcheSet(SwitchMap, 3);
+
+const FastScheduler = sched.makeScheduler(8);
+const SlowScheduler = sched.makeNestedScheduler(8, 250);
+
+const SwitchBox = struct {
+    const Self = @This();
+    pins: [4]Pin,
+
+    fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        std.log.info("{s} {any}", .{ @tagName(payload.which), payload.state });
+        if (payload.state) {
+            self.pins[@backingInt(payload.which)].toggle();
+        }
+    }
+};
+
+const uart = hal.uart.instance.num(1);
+
+const SerialTask = struct {
+    const Self = @This();
+
+    const PERIOD = 50;
+
+    sio: TMC2209.SerialIO = undefined,
+
+    pub fn init(u: hal.uart.UART) Self {
+        return .{ .sio = .init(u) };
+    }
+
+    fn reSchedule(self: *Self, slot: *sched.ScheduleSlot) void {
+        const deadline = slot.now.add_duration(time.Duration.from_us(PERIOD));
+        slot.schedule(deadline, task, self);
+    }
+
+    pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {
+        self.sio.ee.addListener(listener, self);
+        self.reSchedule(slot);
+    }
+
+    fn task(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        self.sio.poll();
+        self.reSchedule(slot);
+    }
+
+    fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
+        _ = ctx;
+        switch (payload) {
+            .received => |dg| std.log.info("event {s}: {x}", .{ @tagName(payload), dg.value() }),
+            else => std.log.info("event {s}", .{@tagName(payload)}),
+        }
+    }
 };
 
 pub fn main() !void {
+    logging.init(.{});
+    std.log.info("Starting...", .{});
     const pins = pin_config.apply();
+    var root_scheduler: FastScheduler = .empty;
+    var slow_scheduler: SlowScheduler = .empty;
 
-    const uart = hal.uart.instance.num(0);
-    uart.apply(.{
-        .clock_config = hal.clock_config,
+    slow_scheduler.schedule(root_scheduler.pri(-1));
+
+    pins.pdn_tx.set_function(.uart);
+    pins.pdn_rx.set_function(.uart);
+
+    var ser: SerialTask = .init(uart);
+    ser.schedule(root_scheduler.pri(0));
+
+    var box: SwitchBox = .{ .pins = .{
+        pins.red_led,
+        pins.yel_led,
+        pins.blu_led,
+        pins.blk_led,
+    } };
+    var switches: Switches = .init(.{
+        pins.red_sw,
+        pins.yel_sw,
+        pins.blu_sw,
+        pins.blk_sw,
     });
-    hal.uart.init_logger(uart);
 
-    pins.led.put(1);
+    switches.addListener(.RED, SwitchBox.onSwitch, &box);
+    switches.addListener(.YEL, SwitchBox.onSwitch, &box);
+    switches.addListener(.BLU, SwitchBox.onSwitch, &box);
+    switches.addListener(.BLK, SwitchBox.onSwitch, &box);
+    switches.schedule(slow_scheduler.pri(0));
 
-    // Then initialize the USB device using the configuration defined above
-    usb_device = .init();
+    var blinker: Blinker = .init(pins.led, 250_000);
+    blinker.schedule(slow_scheduler.pri(1));
 
-    var old: u64 = time.get_time_since_boot().to_us();
-    var new: u64 = 0;
-
-    var i: u32 = 0;
-    while (true) {
-        // You can now poll for USB events
-        usb_device.poll(&usb_controller);
-
-        // Ensure that the host as finished enumerating our USB device
-        if (usb_controller.drivers()) |drivers| {
-            new = time.get_time_since_boot().to_us();
-            if (new - old > 1_000_000) {
-                old = new;
-                pins.led.toggle();
-                i += 1;
-                std.log.info("cdc test: {}", .{i});
-
-                usb_cdc_write(&drivers.serial, "Boo: {}\r\n", .{i});
-            }
-
-            // read and print host command if present
-            const message = usb_cdc_read(&drivers.serial);
-            if (message.len > 0) {
-                usb_cdc_write(&drivers.serial, "Got: {s}\r\n", .{message});
-            }
-        }
-    }
-}
-
-var usb_tx_buff: [1024]u8 = undefined;
-
-/// Transfer data to host
-/// NOTE: After each USB chunk transfer, we have to call the USB task so that bus TX events can be
-/// handled
-pub fn usb_cdc_write(serial: *USB_Serial, comptime fmt: []const u8, args: anytype) void {
-    var tx = std.fmt.bufPrint(&usb_tx_buff, fmt, args) catch &.{};
-
-    while (tx.len > 0) {
-        tx = tx[serial.write(tx)..];
-        usb_device.poll(&usb_controller);
-    }
-    // Short messages are not sent right away; instead, they accumulate in a buffer, so we have to force a flush to send them
-    while (!serial.flush())
-        usb_device.poll(&usb_controller);
-}
-
-var usb_rx_buff: [1024]u8 = undefined;
-
-/// Receive data from host
-/// NOTE: Read code was not tested extensively. In case of issues, try to call USB task before every
-/// read operation
-pub fn usb_cdc_read(serial: *USB_Serial) []const u8 {
-    var rx_len: usize = 0;
+    ser.sio.send(TMC2209.Datagram.initRead(0, .GCONF));
 
     while (true) {
-        const len = serial.read(usb_rx_buff[rx_len..]);
-        rx_len += len;
-        if (len == 0) break;
+        _ = try root_scheduler.poll(hal.time.get_time_since_boot());
     }
-
-    return usb_rx_buff[0..rx_len];
 }
