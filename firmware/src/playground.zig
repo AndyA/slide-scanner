@@ -43,8 +43,8 @@ const pin_config = hal.pins.GlobalConfiguration{
 
     // Stepper
     .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
-    .GPIO16 = .{ .name = "dir", .direction = .out },
-    .GPIO17 = .{ .name = "step", .direction = .out },
+    // .GPIO16 = .{ .name = "dir", .direction = .out },
+    // .GPIO17 = .{ .name = "step", .direction = .out },
     .GPIO18 = .{ .name = "mode2", .direction = .out },
     .GPIO19 = .{ .name = "mode1", .direction = .out },
     .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
@@ -82,8 +82,8 @@ const SerialTask = struct {
     sequence: []const TMC2209.Datagram = undefined,
     pos: u8 = 0,
 
-    pub fn init(u: hal.uart.UART, sequence: []const TMC2209.Datagram) Self {
-        return .{ .sio = .init(u), .sequence = sequence };
+    pub fn init(u: hal.uart.UART, rx_pin: hal.gpio.Pin, tx_pin: hal.gpio.Pin, sequence: []const TMC2209.Datagram) Self {
+        return .{ .sio = .init(u, rx_pin, tx_pin), .sequence = sequence };
     }
 
     fn reSchedule(self: *Self, slot: *sched.ScheduleSlot) void {
@@ -113,19 +113,22 @@ const SerialTask = struct {
         if (self.nextDatagram()) |dg| {
             std.log.info("sending {f}", .{dg});
             self.sio.send(dg);
-        }
-        std.log.info("All Datagrams sent", .{});
+        } else std.log.info("All Datagrams sent", .{});
     }
 
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         switch (payload) {
-            .received => |dg| {
-                std.log.info("{s} {f}", .{ @tagName(payload), dg });
+            .read => |dg| {
+                std.log.info("sio event: {s} {f}", .{ @tagName(payload), dg });
+                self.pump();
+            },
+            .write => {
+                std.log.info("sio event: {s}", .{@tagName(payload)});
                 self.pump();
             },
             else => {
-                std.log.info("{s}", .{@tagName(payload)});
+                std.log.info("sio event: {s}", .{@tagName(payload)});
             },
         }
     }
@@ -145,12 +148,18 @@ pub fn main() !void {
 
     uart.apply(.{
         .clock_config = hal.clock_config,
+        .parity = .none,
     });
 
-    var ser: SerialTask = .init(uart, &.{
-        TMC2209.Datagram.initRead(0, .CHOPCONF),
-        TMC2209.Datagram.initWrite(0, .CHOPCONF, 0xaa),
-        TMC2209.Datagram.initRead(0, .CHOPCONF),
+    pins.en.put(0);
+    pins.mode1.put(0);
+    pins.mode2.put(0);
+
+    const addr: u8 = 0;
+    var ser: SerialTask = .init(uart, pins.pdn_rx, pins.pdn_tx, &.{
+        // TMC2209.Datagram.initRead(addr, .GCONF),
+        TMC2209.Datagram.initWrite(addr, .GCONF, 0xaa),
+        TMC2209.Datagram.initRead(addr, .GCONF),
     });
     ser.schedule(root_scheduler.pri(0));
 
@@ -177,7 +186,6 @@ pub fn main() !void {
     var blinker: Blinker = .init(pins.led, 250_000);
     blinker.schedule(slow_scheduler.pri(1));
 
-    pins.en.put(0);
     ser.pump();
 
     while (true) {

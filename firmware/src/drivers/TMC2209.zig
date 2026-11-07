@@ -174,7 +174,8 @@ pub const SerialIO = struct {
     pub const Event = union(enum) {
         err: void,
         timeout: void,
-        received: Datagram,
+        read: Datagram,
+        write: void,
     };
 
     const Emitter = events.Emitter(Event, 5);
@@ -183,6 +184,8 @@ pub const SerialIO = struct {
     const TIMEOUT = time.Duration.from_ms(1000);
 
     u: hal.uart.UART,
+    rx_pin: hal.gpio.Pin,
+    tx_pin: hal.gpio.Pin,
     state: State = .IDLE,
     ee: Emitter = .empty,
     tx_buf: Datagram.Bytes = undefined,
@@ -192,8 +195,12 @@ pub const SerialIO = struct {
     delay: time.Absolute = undefined,
     timeout: time.Absolute = undefined,
 
-    pub fn init(u: hal.uart.UART) Self {
-        const self: Self = .{ .u = u };
+    pub fn init(u: hal.uart.UART, rx_pin: hal.gpio.Pin, tx_pin: hal.gpio.Pin) Self {
+        const self: Self = .{
+            .u = u,
+            .rx_pin = rx_pin,
+            .tx_pin = tx_pin,
+        };
         self.setWriting(true);
         return self;
     }
@@ -282,19 +289,23 @@ pub const SerialIO = struct {
             .WRITING => {
                 self.writeNonBlocking();
                 if (self.pos == self.tx_buf.len) {
-                    self.goState(.READING);
+                    self.goState(.DISCARDING);
                 }
             },
             .DISCARDING => {
                 self.discardNonBlocking() catch return;
                 if (self.pos == self.tx_buf.len) {
-                    self.goState(.READING);
+                    if (Datagram.initBytes(self.tx_buf).write) {
+                        self.emitAndIdle(.{ .write = {} });
+                    } else {
+                        self.goState(.READING);
+                    }
                 }
             },
             .READING => {
                 self.readNonBlocking() catch return;
                 if (self.pos == self.rx_buf.len) {
-                    self.emitAndIdle(.{ .received = Datagram.initBytes(self.rx_buf) });
+                    self.emitAndIdle(.{ .read = Datagram.initBytes(self.rx_buf) });
                 }
             },
             .RETRY_WAIT => {
