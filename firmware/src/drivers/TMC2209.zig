@@ -206,8 +206,7 @@ pub const Datagram = union(enum) {
 
     pub fn toSlice(self: *const Datagram) []const u8 {
         return switch (self.*) {
-            .read => self.read.toSlice(),
-            .data => self.data.toSlice(),
+            inline else => |*x| x.toSlice(),
         };
     }
 
@@ -222,12 +221,13 @@ test Datagram {
     const rdg: Datagram = .initRead(0, .PWMCONF);
     try std.testing.expect(rdg.checkCrc());
     try std.testing.expectEqual(4, rdg.toSlice().len);
-    // const foo: []const u8 = @ptrCast(&rdg.read);
-    // std.debug.print(
-    //     "rdg.toSlice={any} rdg.read.toSlice={any} foo={any}\n",
-    //     .{ rdg.toSlice(), rdg.read.toSlice(), foo },
-    // );
-
+    if (false) {
+        const foo: []const u8 = @ptrCast(&rdg.read);
+        std.debug.print(
+            "rdg.toSlice={any} rdg.read.toSlice={any} foo={any}\n",
+            .{ rdg.toSlice(), rdg.read.toSlice(), foo },
+        );
+    }
     const ddg: Datagram = .initWrite(0, .PWMCONF, 0xaa);
     try std.testing.expect(ddg.checkCrc());
     try std.testing.expectEqual(8, ddg.toSlice().len);
