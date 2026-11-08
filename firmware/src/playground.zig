@@ -141,10 +141,7 @@ pub fn main() !void {
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
 
-    uart.apply(.{
-        .clock_config = hal.clock_config,
-        .parity = .none,
-    });
+    uart.apply(.{ .clock_config = hal.clock_config });
 
     pins.en.put(0);
     pins.mode1.put(0);
