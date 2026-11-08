@@ -119,11 +119,11 @@ const SerialTask = struct {
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         switch (payload) {
-            .read => |dg| {
+            .data => |dg| {
                 std.log.info("sio event: {s} {f}", .{ @tagName(payload), dg });
                 self.pump();
             },
-            .write => {
+            .ready => {
                 std.log.info("sio event: {s}", .{@tagName(payload)});
                 self.pump();
             },
@@ -157,9 +157,9 @@ pub fn main() !void {
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, pins.pdn_rx, pins.pdn_tx, &.{
-        // TMC2209.Datagram.initRead(addr, .GCONF),
-        TMC2209.Datagram.initWrite(addr, .GCONF, 0xaa),
-        TMC2209.Datagram.initRead(addr, .GCONF),
+        TMC2209.Datagram.initRead(addr, .CHOPCONF),
+        TMC2209.Datagram.initWrite(addr, .CHOPCONF, 0x01),
+        TMC2209.Datagram.initRead(addr, .CHOPCONF),
     });
     ser.schedule(root_scheduler.pri(0));
 

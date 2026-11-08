@@ -82,12 +82,54 @@ pub const Register = enum(u7) {
     PWM_AUTO = 0x72, // R
 };
 
-pub const Datagram = packed struct {
+pub const ReadDG = packed struct {
     comptime {
-        assert(@sizeOf(Datagram) == 8);
-        assert(@offsetOf(Datagram, "crc") == 7);
+        assert(@sizeOf(ReadDG) == 4);
+        assert(@offsetOf(ReadDG, "crc") == 3);
     }
-    pub const Bytes = [@sizeOf(Datagram)]u8;
+    pub const Bytes = [@sizeOf(ReadDG)]u8;
+
+    sync: u8 = 0b00000101,
+    addr: u8,
+    reg: Register,
+    write: bool = false,
+    crc: u8 = undefined,
+
+    pub fn format(self: ReadDG, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try w.print("read {d}/{s} (crc {s})", .{
+            self.addr,
+            @tagName(self.reg),
+            if (self.checkCrc()) "ok" else "bad",
+        });
+    }
+
+    fn calcCrc(self: ReadDG) u8 {
+        return calculateCrc(self.toSlice()[0..@offsetOf(ReadDG, "crc")]);
+    }
+
+    pub fn init(addr: u8, reg: Register) ReadDG {
+        var self: ReadDG = .{ .addr = addr, .reg = reg };
+        self.crc = self.calcCrc();
+        return self;
+    }
+
+    pub fn checkCrc(self: ReadDG) bool {
+        return self.calcCrc() == self.crc;
+    }
+
+    pub fn toSlice(self: *const ReadDG) []const u8 {
+        return @ptrCast(self);
+    }
+};
+
+test ReadDG {}
+
+pub const DataDG = packed struct {
+    comptime {
+        assert(@sizeOf(DataDG) == 8);
+        assert(@offsetOf(DataDG, "crc") == 7);
+    }
+    pub const Bytes = [@sizeOf(DataDG)]u8;
 
     sync: u8 = 0b00000101,
     addr: u8,
@@ -96,8 +138,8 @@ pub const Datagram = packed struct {
     data: u32, // big endian
     crc: u8 = undefined,
 
-    pub fn format(self: Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        try w.print("{s} {d}/{s} 0x{x:0>8} (crc {s})", .{
+    pub fn format(self: DataDG, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try w.print("data {s} {d}/{s} 0x{x:0>8} (crc {s})", .{
             if (self.write) "write" else "read",
             self.addr,
             @tagName(self.reg),
@@ -106,23 +148,12 @@ pub const Datagram = packed struct {
         });
     }
 
-    fn calcCrc(self: Datagram) u8 {
-        return calculateCrc(self.toBytes()[0..@offsetOf(Datagram, "crc")]);
+    fn calcCrc(self: DataDG) u8 {
+        return calculateCrc(self.toSlice()[0..@offsetOf(DataDG, "crc")]);
     }
 
-    pub fn initRead(addr: u8, reg: Register) Datagram {
-        var self: Datagram = .{
-            .addr = addr,
-            .reg = reg,
-            .write = false,
-            .data = 0,
-        };
-        self.crc = self.calcCrc();
-        return self;
-    }
-
-    pub fn initWrite(addr: u8, reg: Register, data: u32) Datagram {
-        var self: Datagram = .{
+    pub fn init(addr: u8, reg: Register, data: u32) DataDG {
+        var self: DataDG = .{
             .addr = addr,
             .reg = reg,
             .write = true,
@@ -132,32 +163,74 @@ pub const Datagram = packed struct {
         return self;
     }
 
-    pub fn initBytes(bytes: Bytes) Datagram {
-        return @bitCast(bytes);
-    }
-
-    pub fn value(self: Datagram) u32 {
+    pub fn value(self: DataDG) u32 {
         return std.mem.bigToNative(u32, self.data);
     }
 
-    pub fn checkCrc(self: Datagram) bool {
+    pub fn checkCrc(self: DataDG) bool {
         return self.calcCrc() == self.crc;
     }
 
-    pub fn toBytes(self: Datagram) Bytes {
-        return @bitCast(self);
+    pub fn toSlice(self: *const DataDG) []const u8 {
+        return @ptrCast(self);
+    }
+
+    pub fn toMutableSlice(self: *DataDG) []u8 {
+        return @ptrCast(self);
+    }
+};
+
+test DataDG {
+    const dg: DataDG = .init(1, .FACTORY_CONF, 0x12345678);
+    try std.testing.expect(dg.checkCrc());
+    try std.testing.expectEqual(0x12345678, dg.value());
+}
+
+pub const Datagram = union(enum) {
+    read: ReadDG,
+    data: DataDG,
+
+    pub fn initRead(addr: u8, reg: Register) Datagram {
+        return .{ .read = .init(addr, reg) };
+    }
+
+    pub fn initWrite(addr: u8, reg: Register, data: u32) Datagram {
+        return .{ .data = .init(addr, reg, data) };
+    }
+
+    pub fn checkCrc(self: Datagram) bool {
+        return switch (self) {
+            inline else => |x| x.checkCrc(),
+        };
+    }
+
+    pub fn toSlice(self: *const Datagram) []const u8 {
+        return switch (self.*) {
+            .read => self.read.toSlice(),
+            .data => self.data.toSlice(),
+        };
+    }
+
+    pub fn format(self: Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        return switch (self) {
+            inline else => |x| x.format(w),
+        };
     }
 };
 
 test Datagram {
-    const dg: Datagram = .initWrite(1, .FACTORY_CONF, 0x12345678);
-    try std.testing.expect(dg.checkCrc());
-    try std.testing.expectEqual(0x12345678, dg.value());
+    const rdg: Datagram = .initRead(0, .PWMCONF);
+    try std.testing.expect(rdg.checkCrc());
+    try std.testing.expectEqual(4, rdg.toSlice().len);
+    // const foo: []const u8 = @ptrCast(&rdg.read);
+    // std.debug.print(
+    //     "rdg.toSlice={any} rdg.read.toSlice={any} foo={any}\n",
+    //     .{ rdg.toSlice(), rdg.read.toSlice(), foo },
+    // );
 
-    const dg2: Datagram = .initBytes(dg.toBytes());
-    try std.testing.expectEqual(0x12345678, dg2.value());
-    try std.testing.expectEqual(.FACTORY_CONF, dg2.reg);
-    try std.testing.expect(dg2.checkCrc());
+    const ddg: Datagram = .initWrite(0, .PWMCONF, 0xaa);
+    try std.testing.expect(ddg.checkCrc());
+    try std.testing.expectEqual(8, ddg.toSlice().len);
 }
 
 pub const SerialIO = struct {
@@ -172,10 +245,10 @@ pub const SerialIO = struct {
     };
 
     pub const Event = union(enum) {
+        data: DataDG,
+        ready: void,
         err: void,
         timeout: void,
-        read: Datagram,
-        write: void,
     };
 
     const Emitter = events.Emitter(Event, 5);
@@ -188,8 +261,10 @@ pub const SerialIO = struct {
     tx_pin: hal.gpio.Pin,
     state: State = .IDLE,
     ee: Emitter = .empty,
-    tx_buf: Datagram.Bytes = undefined,
-    rx_buf: Datagram.Bytes = undefined,
+
+    tx_dg: Datagram = undefined,
+    rx_dg: DataDG = undefined,
+
     pos: u8 = undefined,
     tries: u8 = undefined,
     delay: time.Absolute = undefined,
@@ -212,10 +287,11 @@ pub const SerialIO = struct {
 
     fn writeNonBlocking(self: *Self) void {
         const regs = self.u.get_regs();
-        assert(self.pos < self.tx_buf.len);
-        while (self.pos < self.tx_buf.len and self.u.is_writeable()) {
-            // std.log.debug("wrote 0x{x:0>2}", .{self.tx_buf[self.pos]});
-            regs.UARTDR.write_raw(self.tx_buf[self.pos]);
+        const dg = self.tx_dg.toSlice();
+        assert(self.pos < dg.len);
+        while (self.pos < dg.len and self.u.is_writeable()) {
+            std.log.debug("wrote 0x{x:0>2}", .{dg[self.pos]});
+            regs.UARTDR.write_raw(dg[self.pos]);
             self.pos += 1;
         }
     }
@@ -238,22 +314,24 @@ pub const SerialIO = struct {
             }
             return e;
         };
-        // if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
+        if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
         return byte;
     }
 
     fn discardNonBlocking(self: *Self) !void {
-        assert(self.pos < self.tx_buf.len);
-        while (self.pos < self.tx_buf.len) : (self.pos += 1) {
+        const dg_len = self.tx_dg.toSlice().len;
+        assert(self.pos < dg_len);
+        while (self.pos < dg_len) : (self.pos += 1) {
             if (try self.readByte() == null) break;
         }
     }
 
     fn readNonBlocking(self: *Self) !void {
-        assert(self.pos < self.rx_buf.len);
-        while (self.pos < self.rx_buf.len) : (self.pos += 1) {
+        var dg = self.rx_dg.toMutableSlice();
+        assert(self.pos < dg.len);
+        while (self.pos < dg.len) : (self.pos += 1) {
             if (try self.readByte()) |b|
-                self.rx_buf[self.pos] = b
+                dg[self.pos] = b
             else
                 break;
         }
@@ -261,7 +339,8 @@ pub const SerialIO = struct {
 
     pub fn send(self: *Self, dg: Datagram) void {
         assert(self.state == .IDLE);
-        self.tx_buf = dg.toBytes();
+        assert(dg.checkCrc());
+        self.tx_dg = dg;
         self.tries = 5;
         self.timeout = hal.time.get_time_since_boot().add_duration(TIMEOUT);
         self.goState(.WRITING);
@@ -289,16 +368,16 @@ pub const SerialIO = struct {
             .IDLE => {},
             .WRITING => {
                 self.writeNonBlocking();
-                if (self.pos == self.tx_buf.len) {
+                if (self.pos == self.tx_dg.toSlice().len) {
                     // self.tx_pin.set_direction(.in);
                     self.goState(.DISCARDING);
                 }
             },
             .DISCARDING => {
                 self.discardNonBlocking() catch return;
-                if (self.pos == self.tx_buf.len) {
-                    if (Datagram.initBytes(self.tx_buf).write) {
-                        self.emitAndIdle(.{ .write = {} });
+                if (self.pos == self.tx_dg.toSlice().len) {
+                    if (self.tx_dg == .data) {
+                        self.emitAndIdle(.{ .ready = {} });
                     } else {
                         self.goState(.READING);
                     }
@@ -306,8 +385,8 @@ pub const SerialIO = struct {
             },
             .READING => {
                 self.readNonBlocking() catch return;
-                if (self.pos == self.rx_buf.len) {
-                    self.emitAndIdle(.{ .read = Datagram.initBytes(self.rx_buf) });
+                if (self.pos == self.rx_dg.toSlice().len) {
+                    self.emitAndIdle(.{ .data = self.rx_dg });
                 }
             },
             .RETRY_WAIT => {

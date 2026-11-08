@@ -2,14 +2,15 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const A = struct {
-    pub fn greet(_: @This()) void {
-        std.debug.print("A\n", .{});
+    pub fn greet(self: *const @This()) void {
+        std.debug.print("A {any}\n", .{self});
     }
 };
 
 const B = struct {
-    pub fn greet(_: @This()) void {
-        std.debug.print("B\n", .{});
+    name: []const u8 = "bee",
+    pub fn greet(self: @This()) void {
+        std.debug.print("B {s} {any}\n", .{ self.name, self });
     }
 };
 
