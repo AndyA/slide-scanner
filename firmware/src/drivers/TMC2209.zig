@@ -247,7 +247,8 @@ pub const SerialIO = struct {
     pub const Event = union(enum) {
         data: DataDG,
         ready: void,
-        err: void,
+        data_err: void,
+        crc_err: void,
         timeout: void,
     };
 
@@ -304,7 +305,7 @@ pub const SerialIO = struct {
         return self.u.read_word() catch |e| {
             self.u.clear_errors();
             if (self.tries == 0) {
-                self.emitAndIdle(.{ .err = {} });
+                self.emitAndIdle(.{ .data_err = {} });
             } else {
                 self.tries -= 1;
                 const now = hal.time.get_time_since_boot();
@@ -378,8 +379,12 @@ pub const SerialIO = struct {
             },
             .READING => {
                 self.readNonBlocking() catch return;
-                if (self.pos == self.rx_dg.toSlice().len) {
-                    self.emitAndIdle(.{ .data = self.rx_dg });
+                const dg = self.rx_dg;
+                if (self.pos == dg.toSlice().len) {
+                    if (dg.checkCrc())
+                        self.emitAndIdle(.{ .data = dg })
+                    else
+                        self.emitAndIdle(.{ .crc_err = {} });
                 }
             },
             .RETRY_WAIT => {
