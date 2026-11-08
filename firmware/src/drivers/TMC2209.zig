@@ -185,8 +185,11 @@ test DataDG {
 }
 
 pub const Datagram = union(enum) {
+    none: void,
     read: ReadDG,
     data: DataDG,
+
+    pub const empty: Datagram = .{ .none = {} };
 
     pub fn initRead(addr: u8, reg: Register) Datagram {
         return .{ .read = .init(addr, reg) };
@@ -198,18 +201,21 @@ pub const Datagram = union(enum) {
 
     pub fn checkCrc(self: *const Datagram) bool {
         return switch (self.*) {
+            .none => unreachable,
             inline else => |*x| x.checkCrc(),
         };
     }
 
     pub fn toSlice(self: *const Datagram) []const u8 {
         return switch (self.*) {
+            .none => unreachable,
             inline else => |*x| x.toSlice(),
         };
     }
 
     pub fn format(self: *const Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
         return switch (self.*) {
+            .none => w.print("none", .{}),
             inline else => |*x| x.format(w),
         };
     }
@@ -253,7 +259,7 @@ pub const SerialIO = struct {
     state: State = .IDLE,
     ee: Emitter = .empty,
 
-    tx_dg: Datagram = undefined,
+    tx_dg: Datagram = .empty,
     rx_dg: DataDG = undefined,
 
     pos: u8 = undefined,
