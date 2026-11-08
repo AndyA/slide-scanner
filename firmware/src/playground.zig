@@ -149,8 +149,9 @@ pub fn main() !void {
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, &.{
-        TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
         TMC2209.Datagram.initRead(addr, .IFCNT),
+        TMC2209.Datagram.initRead(addr, .DRV_STATUS),
+        TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
         TMC2209.Datagram.initRead(addr, .VACTUAL),
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .DRV_STATUS),
@@ -177,7 +178,7 @@ pub fn main() !void {
     switches.addListener(.BLK, SwitchBox.onSwitch, &box);
     switches.schedule(slow_scheduler.pri(0));
 
-    var blinker: Blinker = .init(pins.led, 250_000);
+    var blinker: Blinker = .init(pins.led, 100_000);
     blinker.schedule(slow_scheduler.pri(1));
 
     ser.pump();
