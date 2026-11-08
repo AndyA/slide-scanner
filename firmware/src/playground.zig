@@ -82,24 +82,19 @@ const SerialTask = struct {
     sequence: []const TMC2209.Datagram = undefined,
     pos: u8 = 0,
 
-    pub fn init(u: hal.uart.UART, rx_pin: hal.gpio.Pin, tx_pin: hal.gpio.Pin, sequence: []const TMC2209.Datagram) Self {
-        return .{ .sio = .init(u, rx_pin, tx_pin), .sequence = sequence };
-    }
-
-    fn reSchedule(self: *Self, slot: *sched.ScheduleSlot) void {
-        const deadline = slot.now.add_duration(time.Duration.from_us(PERIOD));
-        slot.schedule(deadline, task, self);
+    pub fn init(u: hal.uart.UART, sequence: []const TMC2209.Datagram) Self {
+        return .{ .sio = .init(u), .sequence = sequence };
     }
 
     pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {
         self.sio.ee.addListener(listener, self);
-        self.reSchedule(slot);
+        slot.schedule(slot.now, task, self);
     }
 
     fn task(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         self.sio.poll();
-        self.reSchedule(slot);
+        slot.delay(PERIOD);
     }
 
     fn nextDatagram(self: *Self) ?TMC2209.Datagram {
@@ -156,7 +151,7 @@ pub fn main() !void {
     pins.mode2.put(0);
 
     const addr: u8 = 0;
-    var ser: SerialTask = .init(uart, pins.pdn_rx, pins.pdn_tx, &.{
+    var ser: SerialTask = .init(uart, &.{
         // TMC2209.Datagram.initRead(addr, .CHOPCONF),
         TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
         TMC2209.Datagram.initRead(addr, .IFCNT),

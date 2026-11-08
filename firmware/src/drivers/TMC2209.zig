@@ -87,7 +87,6 @@ pub const ReadDG = packed struct {
         assert(@sizeOf(ReadDG) == 4);
         assert(@offsetOf(ReadDG, "crc") == 3);
     }
-    pub const Bytes = [@sizeOf(ReadDG)]u8;
 
     sync: u8 = 0b00000101,
     addr: u8,
@@ -129,7 +128,6 @@ pub const DataDG = packed struct {
         assert(@sizeOf(DataDG) == 8);
         assert(@offsetOf(DataDG, "crc") == 7);
     }
-    pub const Bytes = [@sizeOf(DataDG)]u8;
 
     sync: u8 = 0b00000101,
     addr: u8,
@@ -198,9 +196,9 @@ pub const Datagram = union(enum) {
         return .{ .data = .init(addr, reg, data) };
     }
 
-    pub fn checkCrc(self: Datagram) bool {
-        return switch (self) {
-            inline else => |x| x.checkCrc(),
+    pub fn checkCrc(self: *const Datagram) bool {
+        return switch (self.*) {
+            inline else => |*x| x.checkCrc(),
         };
     }
 
@@ -210,9 +208,9 @@ pub const Datagram = union(enum) {
         };
     }
 
-    pub fn format(self: Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        return switch (self) {
-            inline else => |x| x.format(w),
+    pub fn format(self: *const Datagram, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        return switch (self.*) {
+            inline else => |*x| x.format(w),
         };
     }
 };
@@ -221,13 +219,7 @@ test Datagram {
     const rdg: Datagram = .initRead(0, .PWMCONF);
     try std.testing.expect(rdg.checkCrc());
     try std.testing.expectEqual(4, rdg.toSlice().len);
-    if (false) {
-        const foo: []const u8 = @ptrCast(&rdg.read);
-        std.debug.print(
-            "rdg.toSlice={any} rdg.read.toSlice={any} foo={any}\n",
-            .{ rdg.toSlice(), rdg.read.toSlice(), foo },
-        );
-    }
+
     const ddg: Datagram = .initWrite(0, .PWMCONF, 0xaa);
     try std.testing.expect(ddg.checkCrc());
     try std.testing.expectEqual(8, ddg.toSlice().len);
@@ -238,9 +230,9 @@ pub const SerialIO = struct {
 
     pub const State = enum(u8) {
         IDLE,
-        WRITING,
-        DISCARDING,
-        READING,
+        WRITE,
+        DISCARD,
+        READ,
         RETRY_WAIT,
     };
 
@@ -255,11 +247,9 @@ pub const SerialIO = struct {
     const Emitter = events.Emitter(Event, 5);
 
     const RETRY_DELAY = time.Duration.from_ms(1);
-    const TIMEOUT = time.Duration.from_ms(1000);
+    const TIMEOUT = time.Duration.from_ms(50);
 
     u: hal.uart.UART,
-    rx_pin: hal.gpio.Pin,
-    tx_pin: hal.gpio.Pin,
     state: State = .IDLE,
     ee: Emitter = .empty,
 
@@ -271,11 +261,9 @@ pub const SerialIO = struct {
     delay: time.Absolute = undefined,
     timeout: time.Absolute = undefined,
 
-    pub fn init(u: hal.uart.UART, rx_pin: hal.gpio.Pin, tx_pin: hal.gpio.Pin) Self {
+    pub fn init(u: hal.uart.UART) Self {
         const self: Self = .{
             .u = u,
-            .rx_pin = rx_pin,
-            .tx_pin = tx_pin,
         };
         self.setWriting(true);
         return self;
@@ -304,14 +292,8 @@ pub const SerialIO = struct {
     fn readByte(self: *Self) !?u8 {
         return self.u.read_word() catch |e| {
             self.u.clear_errors();
-            if (self.tries == 0) {
+            if (!self.retry())
                 self.emitAndIdle(.{ .data_err = {} });
-            } else {
-                self.tries -= 1;
-                const now = hal.time.get_time_since_boot();
-                self.delay = now.add_duration(RETRY_DELAY);
-                self.goState(.RETRY_WAIT);
-            }
             return e;
         };
     }
@@ -337,11 +319,11 @@ pub const SerialIO = struct {
 
     pub fn send(self: *Self, dg: Datagram) void {
         assert(self.state == .IDLE);
-        assert(dg.checkCrc());
         self.tx_dg = dg;
         self.tries = 5;
-        self.timeout = hal.time.get_time_since_boot().add_duration(TIMEOUT);
-        self.goState(.WRITING);
+        const now = hal.time.get_time_since_boot();
+        self.timeout = now.add_duration(TIMEOUT);
+        self.goState(.WRITE);
     }
 
     fn goState(self: *Self, state: State) void {
@@ -349,48 +331,53 @@ pub const SerialIO = struct {
         self.pos = 0;
     }
 
+    fn retry(self: *Self) bool {
+        if (self.tries == 0)
+            return false;
+        self.tries -= 1;
+        const now = hal.time.get_time_since_boot();
+        self.delay = now.add_duration(RETRY_DELAY);
+        self.goState(.RETRY_WAIT);
+        return true;
+    }
+
     pub fn poll(self: *Self) void {
         const now = hal.time.get_time_since_boot();
 
-        if (self.state != .IDLE) {
-            if (self.timeout.is_reached_by(now)) {
-                self.emitAndIdle(.{ .timeout = {} });
-                return;
-            }
+        if (self.state != .IDLE and self.timeout.is_reached_by(now)) {
+            self.emitAndIdle(.{ .timeout = {} });
+            return;
         }
 
         switch (self.state) {
             .IDLE => {},
-            .WRITING => {
+            .WRITE => {
                 self.writeNonBlocking();
-                if (self.pos == self.tx_dg.toSlice().len) {
-                    self.goState(.DISCARDING);
-                }
+                if (self.pos == self.tx_dg.toSlice().len)
+                    self.goState(.DISCARD);
             },
-            .DISCARDING => {
+            .DISCARD => {
                 self.discardNonBlocking() catch return;
                 if (self.pos == self.tx_dg.toSlice().len) {
-                    if (self.tx_dg == .data) {
-                        self.emitAndIdle(.{ .ready = {} });
-                    } else {
-                        self.goState(.READING);
-                    }
+                    if (self.tx_dg == .data)
+                        self.emitAndIdle(.{ .ready = {} })
+                    else
+                        self.goState(.READ);
                 }
             },
-            .READING => {
+            .READ => {
                 self.readNonBlocking() catch return;
                 const dg = self.rx_dg;
                 if (self.pos == dg.toSlice().len) {
                     if (dg.checkCrc())
                         self.emitAndIdle(.{ .data = dg })
-                    else
+                    else if (!self.retry())
                         self.emitAndIdle(.{ .crc_err = {} });
                 }
             },
             .RETRY_WAIT => {
-                if (self.delay.is_reached_by(now)) {
-                    self.goState(.WRITING);
-                }
+                if (self.delay.is_reached_by(now))
+                    self.goState(.WRITE);
             },
         }
     }
