@@ -157,7 +157,7 @@ pub fn main() !void {
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, pins.pdn_rx, pins.pdn_tx, &.{
-        TMC2209.Datagram.initRead(addr, .CHOPCONF),
+        // TMC2209.Datagram.initRead(addr, .CHOPCONF),
         TMC2209.Datagram.initWrite(addr, .CHOPCONF, 0x01),
         TMC2209.Datagram.initRead(addr, .CHOPCONF),
     });
