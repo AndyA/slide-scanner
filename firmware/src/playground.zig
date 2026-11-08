@@ -152,7 +152,6 @@ pub fn main() !void {
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, &.{
-        // TMC2209.Datagram.initRead(addr, .CHOPCONF),
         TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .VACTUAL),
