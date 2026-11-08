@@ -43,8 +43,8 @@ const pin_config = hal.pins.GlobalConfiguration{
 
     // Stepper
     .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
-    // .GPIO16 = .{ .name = "dir", .direction = .out },
-    // .GPIO17 = .{ .name = "step", .direction = .out },
+    .GPIO16 = .{ .name = "dir", .direction = .out },
+    .GPIO17 = .{ .name = "step", .direction = .out },
     .GPIO18 = .{ .name = "mode2", .direction = .out },
     .GPIO19 = .{ .name = "mode1", .direction = .out },
     .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
@@ -158,8 +158,11 @@ pub fn main() !void {
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, pins.pdn_rx, pins.pdn_tx, &.{
         // TMC2209.Datagram.initRead(addr, .CHOPCONF),
-        TMC2209.Datagram.initWrite(addr, .CHOPCONF, 0x01),
-        TMC2209.Datagram.initRead(addr, .CHOPCONF),
+        TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
+        TMC2209.Datagram.initRead(addr, .IFCNT),
+        TMC2209.Datagram.initRead(addr, .VACTUAL),
+        TMC2209.Datagram.initRead(addr, .IFCNT),
+        TMC2209.Datagram.initRead(addr, .DRV_STATUS),
     });
     ser.schedule(root_scheduler.pri(0));
 

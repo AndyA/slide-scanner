@@ -290,7 +290,6 @@ pub const SerialIO = struct {
         const dg = self.tx_dg.toSlice();
         assert(self.pos < dg.len);
         while (self.pos < dg.len and self.u.is_writeable()) {
-            std.log.debug("wrote 0x{x:0>2}", .{dg[self.pos]});
             regs.UARTDR.write_raw(dg[self.pos]);
             self.pos += 1;
         }
@@ -302,7 +301,7 @@ pub const SerialIO = struct {
     }
 
     fn readByte(self: *Self) !?u8 {
-        const byte = self.u.read_word() catch |e| {
+        return self.u.read_word() catch |e| {
             self.u.clear_errors();
             if (self.tries == 0) {
                 self.emitAndIdle(.{ .err = {} });
@@ -314,8 +313,6 @@ pub const SerialIO = struct {
             }
             return e;
         };
-        if (byte) |b| std.log.debug("read 0x{x:0>2}", .{b});
-        return byte;
     }
 
     fn discardNonBlocking(self: *Self) !void {
@@ -344,14 +341,11 @@ pub const SerialIO = struct {
         self.tries = 5;
         self.timeout = hal.time.get_time_since_boot().add_duration(TIMEOUT);
         self.goState(.WRITING);
-        // self.tx_pin.set_direction(.out);
     }
 
     fn goState(self: *Self, state: State) void {
         self.state = state;
         self.pos = 0;
-        std.log.debug("goState {s}", .{@tagName(state)});
-        // self.setWriting(state == .WRITING);
     }
 
     pub fn poll(self: *Self) void {
@@ -369,7 +363,6 @@ pub const SerialIO = struct {
             .WRITING => {
                 self.writeNonBlocking();
                 if (self.pos == self.tx_dg.toSlice().len) {
-                    // self.tx_pin.set_direction(.in);
                     self.goState(.DISCARDING);
                 }
             },
