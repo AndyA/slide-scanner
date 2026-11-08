@@ -1,4 +1,4 @@
-[Pico pinout](https://pico.pinout.xyz/#l=21aDIR;22aSTEP;23aCLK;24aMS2;25aMS1;26ePDN%2F1k;27ePDN;29aEN;36dVDD&i=upl)
+[Pico pinout](https://pico.pinout.xyz/#l=01bDBG_TX;02bDBG_RX;03bDBG_GND;04cRED_LED;05cRED_SW;06aYEL_LED;07aYEL_SW;08iSW_GND;09fBLU_LED;10fBLU_SW;11iBLK_LED;12iBLK_SW;21aDIR;22aSTEP;23aCLK;24aMS2;25aMS1;26ePDN_TX%2F1k;27ePDN_RX;29aEN;36dVDD&i=upl)
 
 ## Calibration
 
