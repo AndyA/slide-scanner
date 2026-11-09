@@ -57,6 +57,12 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
             self.value = .{ .rejected = err };
             self.notify();
         }
+
+        pub fn reset(self: *Self) void {
+            self.later.cancel();
+            self.value = .{ .pending = {} };
+            self.used = 0;
+        }
     };
 }
 
@@ -81,32 +87,70 @@ test Promise {
     try std.testing.expectEqual(0x12345678, l2.value.resolved);
 }
 
-fn AllPromise(promises: anytype) type {
-    const info = @typeInfo(@TypeOf(promises));
-    if (info != .@"struct" or !info.@"struct".is_tuple)
-        @compileError("expected tuple argument, found " ++ @typeName((@TypeOf(promises))));
-    const field_types = info.@"struct".field_types;
-
-    const result_types = blk: {
-        var types: [field_types.len]type = undefined;
-        for (field_types, &types) |t, *rt| {
-            rt.* = @field(t, "Type");
+fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type {
+    const ResTypes: [PromiseTypes.len]type = blk: {
+        var rt: [PromiseTypes.len]type = undefined;
+        for (PromiseTypes, &rt) |pt, *t| {
+            t.* = @field(pt, "Type");
         }
-        break :blk types;
+        break :blk rt;
     };
 
-    const then_size = blk: {
-        var size: u8 = 0;
-        for (field_types) |t| {
-            size = @max(size, @field(t, "Size"));
+    const PromisePointers: type = blk: {
+        var pp: [PromiseTypes.len]type = undefined;
+        for (PromiseTypes, &pp) |pt, *t| {
+            t.* = @Pointer(.one, .{}, pt, null);
         }
-        break :blk size;
+        break :blk @Tuple(&pp);
     };
 
-    return Promise(@Tuple(result_types), then_size);
+    const PromiseType = Promise(@Tuple(&ResTypes), then_size);
+
+    return struct {
+        const Self = @This();
+        promise: PromiseType = .{},
+        value: @Tuple(&ResTypes) = undefined,
+        outstanding: u8 = 0,
+
+        pub fn all(self: *Self, promises: PromisePointers) *PromiseType {
+            self.promise.reset();
+            self.outstanding = PromiseTypes.len;
+            inline for (promises, PromiseTypes, 0..) |p, t, i| {
+                const shim = struct {
+                    fn then_fn(ctx: *anyopaque, value: t.Value) void {
+                        const me: *Self = @ptrCast(@alignCast(ctx));
+                        switch (value) {
+                            .resolved => |v| {
+                                if (me.promise.value == .rejected)
+                                    return;
+                                me.value[i] = v;
+                                assert(me.outstanding != 0);
+                                me.outstanding -= 1;
+                                if (me.outstanding == 0)
+                                    me.promise.resolve(me.value);
+                            },
+                            .rejected => |e| {
+                                me.promise.reject(e);
+                            },
+                            else => unreachable,
+                        }
+                    }
+                };
+                p.then(shim.then_fn, self);
+            }
+            return &self.promise;
+        }
+    };
 }
 
-pub fn all(promises: anytype) AllPromise(promises) {
-    const P = AllPromise(promises);
-    _ = P;
+test AllPromise {
+    const Pbool = Promise(bool, 3);
+    const Pu32 = Promise(u32, 5);
+    const AllP = AllPromise(&.{ Pbool, Pu32 }, 4);
+
+    var p_bool: Pbool = .{};
+    var p_u32: Pu32 = .{};
+    var p_all: AllP = .{};
+
+    _ = p_all.all(.{ &p_bool, &p_u32 });
 }

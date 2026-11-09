@@ -31,6 +31,20 @@ pub fn ensure(self: *Self, worker: Worker, ctx: *anyopaque) void {
     }
 }
 
+pub fn cancel(self: *Self) void {
+    var tick = head;
+    var prev: ?*Self = null;
+    while (tick) |t| {
+        if (t == self) {
+            if (prev) |p| p.next = self.next else head = self.next;
+            if (tail == self) tail = prev;
+            return;
+        }
+        prev = t;
+        tick = t.next;
+    }
+}
+
 pub fn run() void {
     var tick = head;
     while (tick) |t| {
