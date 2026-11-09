@@ -7,6 +7,7 @@ const assert = std.debug.assert;
 
 const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
+const Later = @import("runtime/Later.zig");
 const Blinker = @import("drivers/Blinker.zig");
 const switchset = @import("drivers/switchset.zig");
 
@@ -184,6 +185,7 @@ pub fn main() !void {
     ser.pump();
 
     while (true) {
+        Later.run();
         _ = try root_scheduler.poll(hal.time.get_time_since_boot());
     }
 }
