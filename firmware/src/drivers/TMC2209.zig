@@ -181,15 +181,20 @@ pub const RegValue = union(Register) {
         t143: bool,
         t150: bool,
         t157: bool,
-        _u0: u4,
+        _0: u4,
         cs_actual: u5,
-        _u1: u9,
+        _1: u9,
         steath: bool,
         stst: bool,
     },
     PWMCONF: u32,
     PWM_SCALE: u32,
-    PWM_AUTO: u32,
+    PWM_AUTO: packed struct(u32) {
+        ofs: u8,
+        _0: u8,
+        grad: u8,
+        _1: u8,
+    },
 
     pub fn init(reg: Register, v: u32) Self {
         return switch (reg) {
