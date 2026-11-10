@@ -147,7 +147,10 @@ const SerialTask = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         switch (payload) {
             .data => |dg| {
-                std.log.info("sio event: {s} {f}", .{ @tagName(payload), dg });
+                std.log.info(
+                    "sio event: {s} {f} {any}",
+                    .{ @tagName(payload), dg, dg.regValue() },
+                );
                 self.pump();
             },
             .ready => {
