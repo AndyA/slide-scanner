@@ -155,7 +155,10 @@ pub const RegValue = union(Register) {
         _2: u12,
     },
     TPOWERDOWN: u32,
-    TSTEP: u32,
+    TSTEP: packed struct(u32) {
+        step: u20,
+        _0: u12,
+    },
     TPWMTHRS: u32,
     TCOOLTHRS: u32,
     VACTUAL: i32,
