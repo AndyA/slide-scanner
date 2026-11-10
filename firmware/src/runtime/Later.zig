@@ -10,20 +10,21 @@ var head: ?*Self = null;
 var tail: ?*Self = null;
 
 next: ?*Self = null,
-worker: ?Worker = null,
+worker: Worker = undefined,
 ctx: *anyopaque = undefined,
+scheduled: bool = false,
 
 pub fn schedule(self: *Self, worker: Worker, ctx: *anyopaque) void {
-    assert(self.next == null);
-    assert(self.worker == null);
+    assert(!self.scheduled);
     self.worker = worker;
     self.ctx = ctx;
+    self.scheduled = true;
     if (tail) |t| t.next = self else head = self;
     tail = self;
 }
 
 pub fn ensure(self: *Self, worker: Worker, ctx: *anyopaque) void {
-    if (self.worker == null) {
+    if (!self.scheduled) {
         self.schedule(worker, ctx);
     } else {
         assert(self.worker == worker);
@@ -34,13 +35,14 @@ pub fn ensure(self: *Self, worker: Worker, ctx: *anyopaque) void {
 pub fn cancel(self: *Self) void {
     if (self.worker == null)
         return;
-    self.worker = null;
     var tick = head;
     var prev: ?*Self = null;
     while (tick) |t| {
         if (t == self) {
             if (prev) |p| p.next = self.next else head = self.next;
             if (tail == self) tail = prev;
+            self.scheduled = false;
+            self.next = null;
             return;
         }
         prev = t;
@@ -48,19 +50,18 @@ pub fn cancel(self: *Self) void {
     }
 }
 
-pub fn run() void {
+pub fn poll() void {
     var tick = head;
-    head = null;
-    tail = null;
+    head, tail = .{ null, null };
     while (tick) |t| {
         tick = t.next;
         t.next = null;
-        t.worker.?(t.ctx);
-        t.worker = null;
+        t.scheduled = false;
+        t.worker(t.ctx);
     }
 }
 
 pub fn drain() void {
     while (head != null)
-        run();
+        poll();
 }

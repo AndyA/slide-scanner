@@ -21,8 +21,10 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
         thens: [then_size]ThenSlot = undefined,
         used: u8 = 0,
         later: Later = .empty,
+        notfying: bool = false,
 
         pub fn then(self: *Self, then_fn: Then, ctx: *anyopaque) void {
+            assert(!self.notfying);
             assert(self.used < then_size);
             self.thens[self.used] = .{ .then_fn = then_fn, .ctx = ctx };
             self.used += 1;
@@ -32,7 +34,8 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
         }
 
         fn schedule(self: *Self) void {
-            self.later.ensure(laterFn, self);
+            if (self.used != 0)
+                self.later.ensure(laterFn, self);
         }
 
         fn laterFn(ctx: *anyopaque) void {
@@ -41,6 +44,9 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
         }
 
         fn notify(self: *Self) void {
+            assert(!self.notfying);
+            self.notfying = true;
+            defer self.notfying = false;
             // std.debug.print("notify! {d}\n", .{self.used});
             assert(self.value != .pending);
             for (self.thens[0..self.used]) |t| {
@@ -62,6 +68,7 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
         }
 
         pub fn reset(self: *Self) void {
+            assert(!self.notfying);
             self.later.cancel();
             self.value = .{ .pending = {} };
             self.used = 0;
@@ -90,14 +97,14 @@ test Promise {
     p1.then(L.thenFn, &l1);
     p1.resolve(0x12345678);
     try std.testing.expectEqual(0, l1.count);
-    Later.run();
+    Later.drain();
     try std.testing.expectEqual(1, l1.count);
     try std.testing.expectEqual(0x12345678, l1.value.resolved);
 
     var l2: L = .{};
     p1.then(L.thenFn, &l2);
     try std.testing.expectEqual(0, l2.count);
-    Later.run();
+    Later.drain();
     try std.testing.expectEqual(1, l1.count);
     try std.testing.expectEqual(1, l2.count);
     try std.testing.expectEqual(0x12345678, l2.value.resolved);

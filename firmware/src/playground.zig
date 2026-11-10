@@ -2,6 +2,10 @@ const std = @import("std");
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = microzig.drivers.time;
+const usb = microzig.core.usb;
+const USB_Serial = usb.drivers.CDC;
+
+const USB_Device = hal.usb.Polled(.{});
 
 const assert = std.debug.assert;
 
@@ -10,17 +14,44 @@ const sched = @import("runtime/scheduler.zig");
 const Later = @import("runtime/Later.zig");
 const Blinker = @import("drivers/Blinker.zig");
 const switchset = @import("drivers/switchset.zig");
-
 const TMC2209 = @import("drivers/TMC2209.zig");
+
+const USBTask = @import("scanner/usb_task.zig").USBTask;
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
+    .log_scope_levels = &.{
+        .{ .scope = .usb_dev, .level = .warn },
+        .{ .scope = .usb_ctrl, .level = .warn },
+        .{ .scope = .usb_cdc, .level = .warn },
+    },
     .logFn = hal.uart.log,
 });
 
 comptime {
     _ = microzig.export_startup();
 }
+
+const USB_Controller = usb.DeviceController(.{
+    .bcd_usb = USB_Device.max_supported_bcd_usb,
+    .device_triple = .unspecified,
+    .vendor = USB_Device.default_vendor_id,
+    .product = USB_Device.default_product_id,
+    .bcd_device = .v1_00,
+    .serial = "scanner",
+    .max_supported_packet_size = USB_Device.max_supported_packet_size,
+    .configurations = &.{.{
+        .attributes = .{ .self_powered = false },
+        .max_current_ma = 50,
+        .Drivers = struct {
+            serial: USB_Serial,
+            reset: hal.usb.ResetDriver(null, 0),
+        },
+    }},
+}, .{.{
+    .serial = .{ .itf_notifi = "Board CDC", .itf_data = "Board CDC Data" },
+    .reset = "",
+}});
 
 pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     std.log.err("panic: {s}", .{message});
@@ -130,6 +161,18 @@ const SerialTask = struct {
     }
 };
 
+const USB = USBTask(USB_Controller);
+
+fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
+    _ = ctx;
+    switch (event) {
+        inline else => |data| std.log.debug(
+            "USB: {s} \"{s}\"",
+            .{ @tagName(event), data },
+        ),
+    }
+}
+
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
@@ -138,6 +181,13 @@ pub fn main() !void {
     var slow_scheduler: SlowScheduler = .empty;
 
     slow_scheduler.schedule(root_scheduler.pri(-1));
+
+    // var usb_controller: USB_Controller = .init;
+    // var usb_device: USB_Device = .init();
+    // var usb_task: USB = .init(&usb_controller, &usb_device);
+    // usb_task.ee.addListener(usbEvent, &.{});
+
+    // usb_task.schedule(root_scheduler.pri(0));
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
@@ -157,7 +207,7 @@ pub fn main() !void {
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .DRV_STATUS),
     });
-    ser.schedule(root_scheduler.pri(0));
+    ser.schedule(root_scheduler.pri(1));
 
     var box: SwitchBox = .{ .pins = .{
         pins.red_led,
@@ -185,7 +235,7 @@ pub fn main() !void {
     ser.pump();
 
     while (true) {
-        Later.run();
+        Later.poll();
         _ = try root_scheduler.poll(hal.time.get_time_since_boot());
     }
 }
