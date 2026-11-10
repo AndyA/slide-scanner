@@ -50,12 +50,17 @@ pub fn cancel(self: *Self) void {
 
 pub fn run() void {
     var tick = head;
+    head = null;
+    tail = null;
     while (tick) |t| {
         tick = t.next;
         t.next = null;
         t.worker.?(t.ctx);
         t.worker = null;
     }
-    head = null;
-    tail = null;
+}
+
+pub fn drain() void {
+    while (head != null)
+        run();
 }

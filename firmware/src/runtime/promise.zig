@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const print = std.debug.print;
 
 const Later = @import("Later.zig");
 
@@ -105,14 +106,14 @@ test Promise {
 fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type {
     const n_promises = PromiseTypes.len;
 
-    const Type: type = blk: {
+    const T: type = blk: {
         var rt: [n_promises]type = undefined;
         for (PromiseTypes, &rt) |pt, *t|
             t.* = @field(pt, "Type");
         break :blk @Tuple(&rt);
     };
 
-    const PromiseType = Promise(Type, then_size);
+    const PromiseType = Promise(T, then_size);
 
     const Refs: type = blk: {
         var pp: [n_promises]type = undefined;
@@ -123,9 +124,11 @@ fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type 
 
     return struct {
         const Self = @This();
+        pub const Value = PromiseType.Value;
+        pub const Type = PromiseType.Type;
 
         promise: PromiseType = .{},
-        value: Type = undefined,
+        value: T = undefined,
         outstanding: u8 = 0,
 
         pub fn reset(self: *Self) void {
@@ -136,12 +139,14 @@ fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type 
         fn maybeResolve(self: *Self) void {
             assert(self.outstanding != 0);
             self.outstanding -= 1;
-            if (self.outstanding == 0)
+            if (self.outstanding == 0) {
                 self.promise.resolve(self.value);
+            }
         }
 
         pub fn all(self: *Self, promises: Refs) *PromiseType {
-            self.outstanding = n_promises;
+            assert(promises.len == n_promises);
+            self.outstanding = promises.len;
             inline for (promises, PromiseTypes, 0..) |p, t, i| {
                 const shim = struct {
                     fn thenFn(ctx: *anyopaque, value: t.Value) void {
@@ -170,11 +175,37 @@ fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type 
 test AllPromise {
     const Pbool = Promise(bool, 3);
     const Pu32 = Promise(u32, 5);
-    const AllP = AllPromise(&.{ Pbool, Pu32 }, 4);
+    const Pall = AllPromise(&.{ Pbool, Pu32 }, 4);
+
+    const Lbool = TestListener(Pbool.Value);
+    const Lu32 = TestListener(Pu32.Value);
+    const Lall = TestListener(Pall.Value);
 
     var p_bool: Pbool = .{};
+    var l_bool: Lbool = .{};
     var p_u32: Pu32 = .{};
-    var p_all: AllP = .{};
+    var l_u32: Lu32 = .{};
+    var p_all: Pall = .{};
+    var l_all: Lall = .{};
 
-    _ = p_all.all(.{ &p_bool, &p_u32 });
+    var p_all_p = p_all.all(.{ &p_bool, &p_u32 });
+    p_bool.then(Lbool.thenFn, &l_bool);
+    p_u32.then(Lu32.thenFn, &l_u32);
+    p_all_p.then(Lall.thenFn, &l_all);
+
+    p_u32.resolve(0x12345678);
+    Later.drain();
+    try std.testing.expectEqual(0, l_bool.count);
+    try std.testing.expectEqual(1, l_u32.count);
+    try std.testing.expectEqual(0, l_all.count);
+    try std.testing.expectEqual(0x12345678, l_u32.value.resolved);
+
+    p_bool.resolve(true);
+    Later.drain();
+    try std.testing.expectEqual(1, l_bool.count);
+    try std.testing.expectEqual(1, l_u32.count);
+    try std.testing.expectEqual(1, l_all.count);
+    try std.testing.expectEqual(true, l_bool.value.resolved);
+    try std.testing.expectEqual(0x12345678, l_u32.value.resolved);
+    try std.testing.expectEqual(.{ true, 0x12345678 }, l_all.value.resolved);
 }
