@@ -44,7 +44,7 @@ pub fn build(b: *std.Build) void {
 
         mb.install_firmware(firmware, .{});
         const elf = mb.add_install_firmware(firmware, .{ .format = .elf });
-        const foo = mb.add_install_firmware(firmware, .{});
+        const uf2 = mb.add_install_firmware(firmware, .{});
 
         const build_step = b.step(app_name, "Build the " ++ app_name ++ " firmware");
         if (opt_program) {
@@ -61,7 +61,7 @@ pub fn build(b: *std.Build) void {
             build_step.dependOn((&elf.step));
         }
 
-        build_step.dependOn(&foo.step);
+        build_step.dependOn(&uf2.step);
         build_all.dependOn(build_step);
 
         // First firmware is the default
