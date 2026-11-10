@@ -164,12 +164,17 @@ const SerialTask = struct {
 const USB = USBTask(USB_Controller);
 
 fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
-    _ = ctx;
+    var buf: [1024]u8 = undefined;
+    const task: *USB = @ptrCast(@alignCast(ctx));
     switch (event) {
-        inline else => |data| std.log.debug(
-            "USB: {s} \"{s}\"",
-            .{ @tagName(event), data },
-        ),
+        inline else => |data| {
+            std.log.debug(
+                "USB: {s} \"{s}\"",
+                .{ @tagName(event), data },
+            );
+            const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
+            _ = task.write(tx);
+        },
     }
 }
 
@@ -185,7 +190,7 @@ pub fn main() !void {
     var usb_controller: USB_Controller = .init;
     var usb_device: USB_Device = .init();
     var usb_task: USB = .init(&usb_controller, &usb_device);
-    usb_task.ee.addListener(usbEvent, &.{});
+    usb_task.ee.addListener(usbEvent, &usb_task);
     usb_task.schedule(root_scheduler.pri(0));
 
     pins.pdn_tx.set_function(.uart);
