@@ -138,9 +138,11 @@ const SerialTask = struct {
 
     pub fn pump(self: *Self) void {
         if (self.nextDatagram()) |dg| {
-            std.log.info("sending {f}", .{dg});
+            // std.log.info("sending {f}", .{dg});
             self.sio.send(dg);
-        } else std.log.info("All Datagrams sent", .{});
+        } else {
+            std.log.info("All Datagrams sent", .{});
+        }
     }
 
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
