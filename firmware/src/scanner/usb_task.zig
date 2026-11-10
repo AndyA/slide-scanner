@@ -26,7 +26,7 @@ pub fn USBTask(comptime USB_Controller: type) type {
         };
 
         controller: *USB_Controller,
-        device: *USB_Device = undefined,
+        device: *USB_Device,
 
         serial: *USB_Serial = undefined,
 
@@ -47,7 +47,6 @@ pub fn USBTask(comptime USB_Controller: type) type {
 
         fn task(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            self.device.poll(self.controller);
             try self.stateMachine();
             slot.delay(PERIOD);
         }
@@ -82,6 +81,7 @@ pub fn USBTask(comptime USB_Controller: type) type {
         }
 
         fn stateMachine(self: *Self) !void {
+            self.device.poll(self.controller);
             switch (self.state) {
                 .INIT => {
                     if (self.controller.drivers()) |drivers| {

@@ -49,7 +49,7 @@ const USB_Controller = usb.DeviceController(.{
         },
     }},
 }, .{.{
-    .serial = .{ .itf_notifi = "Board CDC", .itf_data = "Board CDC Data" },
+    .serial = .{ .itf_notifi = "Scanner CDC", .itf_data = "Scanner CDC Data" },
     .reset = "",
 }});
 
@@ -182,12 +182,11 @@ pub fn main() !void {
 
     slow_scheduler.schedule(root_scheduler.pri(-1));
 
-    // var usb_controller: USB_Controller = .init;
-    // var usb_device: USB_Device = .init();
-    // var usb_task: USB = .init(&usb_controller, &usb_device);
-    // usb_task.ee.addListener(usbEvent, &.{});
-
-    // usb_task.schedule(root_scheduler.pri(0));
+    var usb_controller: USB_Controller = .init;
+    var usb_device: USB_Device = .init();
+    var usb_task: USB = .init(&usb_controller, &usb_device);
+    usb_task.ee.addListener(usbEvent, &.{});
+    usb_task.schedule(root_scheduler.pri(0));
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
