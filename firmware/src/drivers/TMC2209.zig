@@ -213,7 +213,7 @@ pub const RegValue = union(Register) {
 
     pub fn value(self: Self) u32 {
         return switch (self) {
-            inline else => |d| @as(u32, @bitCast(d)),
+            inline else => |v| @as(u32, @bitCast(v)),
         };
     }
 };
