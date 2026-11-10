@@ -82,6 +82,111 @@ pub const Register = enum(u7) {
     PWM_AUTO = 0x72, // R
 };
 
+pub const RegValue = union(Register) {
+    const Self = @This();
+
+    GCONF: packed struct(u32) {
+        i_scale_analog: bool = true,
+        internal_rsense: bool = false, // OTP default
+        en_spreadcycle: bool = false, // OTP default
+        shaft: bool = false,
+        index_otpw: bool = false,
+        index_step: bool = false,
+        pdn_disable: bool = true, // Desired for UART use
+        mstep_reg_select: bool = true, // Desired for UART use
+        multistep_filt: bool = false,
+        test_mode: bool = false,
+        _0: u22 = 0,
+    },
+    GSTAT: packed struct(u32) {
+        reset: bool,
+        drv_err: bool,
+        uv_cp: bool,
+        _0: u29 = 0,
+    },
+    IFCNT: packed struct(u32) {
+        count: u8,
+        _0: u24,
+    },
+    NODECONF: packed struct(u32) {
+        _0: u8 = 0,
+        send_delay: u4,
+        _1: u20 = 0,
+    },
+    OTP_PROG: packed struct(u32) {
+        bit: u3,
+        byte: u2,
+        _0: u3 = 0,
+        magic: u8 = 0xbd,
+        _1: u16 = 0,
+    },
+    OTP_READ: packed struct(u32) {
+        otp0: u8,
+        otp1: u8,
+        otp2: u8,
+        _0: u8,
+    },
+    IOIN: packed struct(u32) {
+        en: bool,
+        _0: u1,
+        ms1: bool,
+        ms2: bool,
+        diag: bool,
+        _1: u1,
+        pdn_uart: bool,
+        step: bool,
+        spread_en: bool,
+        dir: bool,
+        _2: u14,
+        version: u8,
+    },
+    FACTORY_CONF: packed struct(u32) {
+        fclk_trim: u5,
+        _0: u3,
+        ot_trim: u2,
+        _1: u22,
+    },
+    IHOLD_IRUN: packed struct(u32) {
+        hold: u5,
+        _0: u3,
+        run: u5,
+        _1: u3,
+        hold_delay: u4,
+        _2: u12,
+    },
+    TPOWERDOWN: u32,
+    TSTEP: u32,
+    TPWMTHRS: u32,
+    TCOOLTHRS: u32,
+    VACTUAL: i32,
+    SGTHRS: u32,
+    SG_RESULT: u32,
+    COOLCONF: u32,
+    MSCNT: u32,
+    MSCURACT: u32,
+    CHOPCONF: u32,
+    DRV_STATUS: u32,
+    PWMCONF: u32,
+    PWM_SCALE: u32,
+    PWM_AUTO: u32,
+
+    pub fn init(reg: Register, v: u32) Self {
+        return switch (reg) {
+            inline else => |r| @unionInit(Self, @tagName(r), @bitCast(v)),
+        };
+    }
+
+    pub fn register(self: Self) Register {
+        return std.meta.activeTag(self);
+    }
+
+    pub fn value(self: Self) u32 {
+        return switch (self) {
+            inline else => |d| @as(u32, @bitCast(d)),
+        };
+    }
+};
+
 pub const ReadDG = packed struct {
     comptime {
         assert(@sizeOf(ReadDG) == 4);
@@ -161,8 +266,16 @@ pub const DataDG = packed struct {
         return self;
     }
 
+    pub fn initRegValue(addr: u8, rv: RegValue) DataDG {
+        return .init(addr, rv.register(), rv.value());
+    }
+
     pub fn value(self: DataDG) u32 {
         return std.mem.bigToNative(u32, self.data);
+    }
+
+    pub fn regValue(self: DataDG) RegValue {
+        return .init(self.reg, self.value());
     }
 
     pub fn checkCrc(self: DataDG) bool {
