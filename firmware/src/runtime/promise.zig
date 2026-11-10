@@ -133,6 +133,13 @@ fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type 
             self.outstanding = 0;
         }
 
+        fn maybeResolve(self: *Self) void {
+            assert(self.outstanding != 0);
+            self.outstanding -= 1;
+            if (self.outstanding == 0)
+                self.promise.resolve(self.value);
+        }
+
         pub fn all(self: *Self, promises: Refs) *PromiseType {
             self.outstanding = n_promises;
             inline for (promises, PromiseTypes, 0..) |p, t, i| {
@@ -144,10 +151,7 @@ fn AllPromise(comptime PromiseTypes: []const type, comptime then_size: u8) type 
                                 if (me.promise.value == .rejected)
                                     return;
                                 me.value[i] = v;
-                                assert(me.outstanding != 0);
-                                me.outstanding -= 1;
-                                if (me.outstanding == 0)
-                                    me.promise.resolve(me.value);
+                                me.maybeResolve();
                             },
                             .rejected => |e| {
                                 me.promise.reject(e);
