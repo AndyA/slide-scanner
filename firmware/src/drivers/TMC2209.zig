@@ -131,7 +131,11 @@ pub const RegValue = union(Register) {
             internal_rsense: bool,
             tbl: u1,
         },
-        otp1: packed struct(u8) { pwm_grad: u4, pwm_autograd: bool, tpwm_thrs: u3 },
+        otp1: packed struct(u8) {
+            pwm_grad: u4,
+            pwm_autograd: bool,
+            tpwm_thrs: u3,
+        },
         otp2: packed struct(u8) {
             pwm_ofs: bool,
             pwm_reg: bool,
