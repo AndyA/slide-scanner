@@ -31,14 +31,15 @@ const Pin = hal.gpio.Pin;
 
 // Compile-time pin configuration
 const pin_config = hal.pins.GlobalConfiguration{
-    .GPIO2 = .{ .name = "red_led", .direction = .out },
-    .GPIO3 = .{ .name = "red_sw", .direction = .in, .pull = .up },
-    .GPIO4 = .{ .name = "yel_led", .direction = .out },
-    .GPIO5 = .{ .name = "yel_sw", .direction = .in, .pull = .up },
-    .GPIO6 = .{ .name = "blu_led", .direction = .out },
-    .GPIO7 = .{ .name = "blu_sw", .direction = .in, .pull = .up },
-    .GPIO8 = .{ .name = "blk_led", .direction = .out },
-    .GPIO9 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
+    .GPIO2 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
+    .GPIO3 = .{ .name = "blk_led", .direction = .out },
+    .GPIO4 = .{ .name = "blu_sw", .direction = .in, .pull = .up },
+    .GPIO5 = .{ .name = "blu_led", .direction = .out },
+    .GPIO6 = .{ .name = "yel_sw", .direction = .in, .pull = .up },
+    .GPIO7 = .{ .name = "yel_led", .direction = .out },
+    .GPIO8 = .{ .name = "red_sw", .direction = .in, .pull = .up },
+    .GPIO9 = .{ .name = "red_led", .direction = .out },
+
     .GPIO25 = .{ .name = "led", .direction = .out },
 
     // Stepper
