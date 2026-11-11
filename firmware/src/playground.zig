@@ -299,7 +299,7 @@ pub fn main() !void {
     });
     try stepper.start(root_scheduler.pri(0));
     stepper.setSpeed(200 * 16);
-    stepper.setRemaining(1000 * 16);
+    stepper.setRemaining(20_000 * 16);
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, &.{
