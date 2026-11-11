@@ -3,7 +3,11 @@ const assert = std.debug.assert;
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = microzig.drivers.time;
+
+const ScheduleSlot = @import("../runtime/scheduler.zig").ScheduleSlot;
 const events = @import("../runtime/events.zig");
+
+const Pin = hal.gpio.Pin;
 
 fn nextCrc(old_crc: u8, byte: u8) u8 {
     var work = byte;
@@ -99,9 +103,9 @@ pub const RegValue = union(Register) {
         _0: u22 = 0,
     },
     GSTAT: packed struct(u32) { // R/WC
-        reset: bool,
-        drv_err: bool,
-        uv_cp: bool,
+        reset: bool = false,
+        drv_err: bool = false,
+        uv_cp: bool = false,
         _0: u29 = 0,
     },
     IFCNT: packed struct(u32) { // R
@@ -183,7 +187,7 @@ pub const RegValue = union(Register) {
         _0: u12,
     },
     VACTUAL: packed struct(u32) { // W
-        steps: i24,
+        speed: i24,
         _0: u8 = 0,
     },
     SGTHRS: packed struct(u32) { // W
@@ -348,7 +352,7 @@ pub const DataDG = packed struct {
             if (self.write) "write" else "read",
             self.addr,
             @tagName(self.reg),
-            self.value(),
+            self.rawValue(),
             if (self.checkCrc()) "ok" else "bad",
         });
     }
@@ -357,7 +361,7 @@ pub const DataDG = packed struct {
         return calculateCrc(self.toSlice()[0..@offsetOf(DataDG, "crc")]);
     }
 
-    pub fn init(addr: u8, reg: Register, data: u32) DataDG {
+    pub fn initRaw(addr: u8, reg: Register, data: u32) DataDG {
         var self: DataDG = .{
             .addr = addr,
             .reg = reg,
@@ -368,16 +372,16 @@ pub const DataDG = packed struct {
         return self;
     }
 
-    pub fn initRegValue(addr: u8, rv: RegValue) DataDG {
-        return .init(addr, rv.register(), rv.value());
+    pub fn init(addr: u8, rv: RegValue) DataDG {
+        return .initRaw(addr, rv.register(), rv.value());
     }
 
-    pub fn value(self: DataDG) u32 {
+    pub fn rawValue(self: DataDG) u32 {
         return std.mem.bigToNative(u32, self.data);
     }
 
-    pub fn regValue(self: DataDG) RegValue {
-        return .init(self.reg, self.value());
+    pub fn value(self: DataDG) RegValue {
+        return .init(self.reg, self.rawValue());
     }
 
     pub fn checkCrc(self: DataDG) bool {
@@ -394,9 +398,9 @@ pub const DataDG = packed struct {
 };
 
 test DataDG {
-    const dg: DataDG = .init(1, .FACTORY_CONF, 0x12345678);
+    const dg: DataDG = .initRaw(1, .FACTORY_CONF, 0x12345678);
     try std.testing.expect(dg.checkCrc());
-    try std.testing.expectEqual(0x12345678, dg.value());
+    try std.testing.expectEqual(0x12345678, dg.rawValue());
 }
 
 pub const Datagram = union(enum) {
@@ -410,8 +414,8 @@ pub const Datagram = union(enum) {
         return .{ .read = .init(addr, reg) };
     }
 
-    pub fn initWrite(addr: u8, reg: Register, data: u32) Datagram {
-        return .{ .data = .init(addr, reg, data) };
+    pub fn initWrite(addr: u8, rv: RegValue) Datagram {
+        return .{ .data = .init(addr, rv) };
     }
 
     pub fn checkCrc(self: *const Datagram) bool {
@@ -441,7 +445,7 @@ test Datagram {
     try std.testing.expect(rdg.checkCrc());
     try std.testing.expectEqual(4, rdg.toSlice().len);
 
-    const ddg: Datagram = .initWrite(0, .PWMCONF, 0xaa);
+    const ddg: Datagram = .initWrite(0, .init(.PWMCONF, 0xaa));
     try std.testing.expect(ddg.checkCrc());
     try std.testing.expectEqual(8, ddg.toSlice().len);
 }
@@ -599,6 +603,249 @@ pub const SerialIO = struct {
             .RETRY_WAIT => {
                 if (self.delay.is_reached_by(now))
                     self.goState(.WRITE);
+            },
+        }
+    }
+};
+
+pub const Stepper = struct {
+    const Self = @This();
+
+    // During idling we wake up every 100µS to notice whether
+    // we need to do anything
+    const IDLE_TIME = 100; // µS
+
+    // We assert STEP for up to two ticks. If we used one tick we might
+    // sometimes get a much shorter delay due to scheduler granularity.
+    // We only actually need 100ns
+    const STEP_TIME = 2; // µS
+    const MODE_HOLD_TIME = 101; // µS
+
+    pub const Config = struct {
+        step_pin: Pin,
+        dir_pin: Pin,
+    };
+
+    pub const State = enum(u8) {
+        INIT,
+        IDLE,
+
+        START,
+        MOVING,
+        STEP,
+        STEPPING,
+        STEPPED,
+
+        STOPPING,
+    };
+
+    pub const EventPayload = struct {
+        target: *Self,
+        state: State,
+    };
+
+    pub const RTEventPayload = struct {
+        target: *Self,
+        state: State,
+        now: time.Absolute,
+        running: bool,
+    };
+
+    pub const Direction = enum(u2) {
+        CW,
+        CCW,
+        UNKNOWN, // at startup
+
+        pub fn fromError(err: anytype) Direction {
+            if (err < 0)
+                return .CCW;
+            if (err > 0)
+                return .CW;
+            return .UNKNOWN;
+        }
+
+        pub fn step(self: Direction, comptime T: type) T {
+            return switch (self) {
+                .CW => 1,
+                .CCW => -1,
+                .UNKNOWN => 0,
+            };
+        }
+    };
+
+    config: Config,
+
+    state: State = .INIT,
+
+    direction: Direction = .UNKNOWN,
+
+    /// Current speed (steps/second)
+    speed: u32 = 0,
+
+    /// Number of steps still to perform
+    steps_remaining: i32 = 0,
+
+    /// The current position of the motor
+    current_position: i64 = 0,
+
+    /// Current per-step interval
+    us_per_step: u32 = 0,
+
+    /// Event emitter - gets notifications of significant state changes:
+    ///   .INIT <=> .IDLE
+    ///   .IDLE <=> .MOVING
+    state_ee: events.Emitter(EventPayload, 5) = .empty,
+
+    /// Realtime event emitter - called after every step before the delay
+    /// to the next step is calculated. Event handlers can usefully vary
+    /// the speed here. Only allows two subscribers because it makes no
+    /// sense to have multiple parties fighting over control of the
+    /// speed. Having two allows a handler to be hooked with `once` and
+    /// be able to re-hook using `once` again from within the handler.
+    rt_ee: events.Emitter(RTEventPayload, 2) = .empty,
+
+    pub fn init(config: Config) Self {
+        return .{ .config = config };
+    }
+
+    pub fn start(self: *Self, slot: *ScheduleSlot) !void {
+        assert(self.state == .INIT);
+        self.direction = .UNKNOWN;
+        slot.schedule(slot.now, stateMachine, self);
+        try self.notifyState(.IDLE);
+    }
+
+    pub fn stop(self: *Self) void {
+        if (self.state != .INIT) {
+            self.state = .STOPPING;
+            self.setSpeed(0);
+            self.steps_remaining = 0;
+        }
+    }
+
+    pub fn rotate(self: *Self, steps: i32) void {
+        self.steps_remaining += steps;
+    }
+
+    pub fn setRemaining(self: *Self, steps: i32) void {
+        self.steps_remaining = steps;
+    }
+
+    pub fn setSpeed(self: *Self, speed: u32) void {
+        if (speed != self.speed) {
+            const us_per_step = 1_000_000 / speed;
+            self.us_per_step = @max(STEP_TIME * 2, us_per_step);
+            self.speed = speed;
+        }
+    }
+
+    fn notifyState(self: *Self, state: State) !void {
+        std.log.info("{s} -> {s}", .{ @tagName(self.state), @tagName(state) });
+        self.state = state;
+        try self.state_ee.emit(.{ .target = self, .state = state });
+    }
+
+    fn rtNotify(self: *Self, now: time.Absolute, running: bool) !void {
+        try self.rt_ee.emit(.{
+            .target = self,
+            .state = self.state,
+            .now = now,
+            .running = running,
+        });
+    }
+
+    fn stateMachine(ctx: *anyopaque, slot: *ScheduleSlot) !void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        const c = self.config;
+
+        sm: switch (self.state) {
+            .INIT => unreachable,
+            .IDLE => {
+                // Keep the RT notifications coming
+                try self.rtNotify(slot.now, false);
+
+                if (self.steps_remaining != 0) {
+                    try self.notifyState(.START);
+                    continue :sm self.state;
+                }
+
+                slot.delay(IDLE_TIME);
+            },
+
+            .START => {
+                self.direction = .UNKNOWN;
+                self.state = .MOVING;
+                continue :sm self.state;
+            },
+            .MOVING => {
+                if (self.steps_remaining == 0) {
+                    try self.notifyState(.IDLE);
+                    continue :sm self.state;
+                }
+
+                self.state = .STEP;
+
+                const new_direction: Direction = .fromError(self.steps_remaining);
+                if (new_direction == self.direction)
+                    continue :sm self.state; // all set, go and step
+
+                self.direction = new_direction;
+
+                c.dir_pin.put(switch (new_direction) {
+                    .CW => 1,
+                    .CCW => 0,
+                    else => unreachable,
+                });
+
+                slot.delay(STEP_TIME); // allow dir to settle
+            },
+            .STEP => {
+                if (self.steps_remaining == 0) {
+                    try self.notifyState(.IDLE);
+                    continue :sm self.state;
+                }
+
+                if (self.speed == 0) {
+                    // Loop while we wait for non-zero speed
+                    try self.rtNotify(slot.now, true);
+                    self.state = .MOVING;
+                    slot.delay(IDLE_TIME);
+                } else {
+                    c.step_pin.put(1);
+                    self.state = .STEPPING;
+                    slot.delay(STEP_TIME);
+                }
+            },
+            .STEPPING => {
+                c.step_pin.put(0);
+
+                // Update state as if the step was already complete.
+                const delta: i32 = if (self.steps_remaining > 0) 1 else -1;
+
+                self.current_position += delta;
+                self.steps_remaining -= delta;
+
+                // Set the delay before sending the RT notification in case the
+                // RT handler changes speed, updating us_per_step.
+                slot.delay(self.us_per_step - STEP_TIME);
+
+                // Send the RT notification during our long wait to give it the
+                // best chance of completing without affecting our step timing.
+                try self.rtNotify(slot.now, true);
+                self.state = .STEPPED;
+            },
+            .STEPPED => {
+                if (self.steps_remaining == 0)
+                    try self.notifyState(.IDLE)
+                else
+                    self.state = .MOVING;
+
+                continue :sm self.state;
+            },
+
+            .STOPPING => {
+                try self.notifyState(.INIT);
+                // don't reschedule
             },
         }
     }
