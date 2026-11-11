@@ -74,7 +74,7 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO25 = .{ .name = "led", .direction = .out },
 
     // Stepper
-    .GPIO15 = .{ .name = "diag", .direction = .in, .pull = .up },
+    .GPIO15 = .{ .name = "lim_opto", .direction = .in, .pull = .up },
     .GPIO16 = .{ .name = "dir", .direction = .out },
     .GPIO17 = .{ .name = "step", .direction = .out },
     .GPIO18 = .{ .name = "mode2", .direction = .out },
