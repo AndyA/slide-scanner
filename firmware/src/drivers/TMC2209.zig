@@ -683,7 +683,7 @@ pub const Stepper = struct {
     speed: u32 = 0,
 
     /// Number of steps still to perform
-    steps_remaining: i32 = 0,
+    steps_remaining: i64 = 0,
 
     /// The current position of the motor
     current_position: i64 = 0,
@@ -723,12 +723,16 @@ pub const Stepper = struct {
         }
     }
 
-    pub fn rotate(self: *Self, steps: i32) void {
+    pub fn rotate(self: *Self, steps: i64) void {
         self.steps_remaining += steps;
     }
 
-    pub fn setRemaining(self: *Self, steps: i32) void {
+    pub fn setRemaining(self: *Self, steps: i64) void {
         self.steps_remaining = steps;
+    }
+
+    pub fn setPosition(self: *Self, pos: i64) void {
+        self.steps_remaining = pos - self.current_position;
     }
 
     pub fn setSpeed(self: *Self, speed: u32) void {
@@ -826,13 +830,14 @@ pub const Stepper = struct {
                 self.current_position += delta;
                 self.steps_remaining -= delta;
 
-                // Set the delay before sending the RT notification in case the
-                // RT handler changes speed, updating us_per_step.
-                slot.delay(self.us_per_step - STEP_TIME);
-
                 // Send the RT notification during our long wait to give it the
                 // best chance of completing without affecting our step timing.
                 try self.rtNotify(slot.now, true);
+
+                // Set the delay after sending the RT notification in case the
+                // RT handler changes speed, updating us_per_step.
+                slot.delay(self.us_per_step - STEP_TIME);
+
                 self.state = .STEPPED;
             },
             .STEPPED => {

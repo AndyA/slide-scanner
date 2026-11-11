@@ -298,7 +298,7 @@ pub fn main() !void {
         .dir_pin = pins.dir,
     });
     try stepper.start(root_scheduler.pri(0));
-    stepper.setSpeed(100 * 16);
+    stepper.setSpeed(200 * 16);
     stepper.setRemaining(1000 * 16);
 
     const addr: u8 = 0;
