@@ -298,8 +298,8 @@ pub fn main() !void {
         .dir_pin = pins.dir,
     });
     try stepper.start(root_scheduler.pri(0));
-    stepper.setSpeed(100 * 256);
-    stepper.setRemaining(1000 * 256);
+    stepper.setSpeed(100 * 16);
+    stepper.setRemaining(1000 * 16);
 
     const addr: u8 = 0;
     var ser: SerialTask = .init(uart, &.{
@@ -309,6 +309,18 @@ pub fn main() !void {
             .pdn_disable = true,
             .mstep_reg_select = true,
             .shaft = true,
+        } }),
+        Datagram.initWrite(addr, .{ .CHOPCONF = .{
+            .toff = 3,
+            .h_strt = 5,
+            .h_end = 0,
+            .tbl = 2,
+            .vsense_high = false,
+            .mres = 4,
+            .intpol = true,
+            .dedge = false,
+            .diss2g = false,
+            .diss2vs = false,
         } }),
         Datagram.initWrite(addr, .{ .NODECONF = .{ .send_delay = 0 } }),
         Datagram.initWrite(addr, .{ .VACTUAL = .{ .speed = 0 } }),

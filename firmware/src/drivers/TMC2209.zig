@@ -736,6 +736,7 @@ pub const Stepper = struct {
             const us_per_step = 1_000_000 / speed;
             self.us_per_step = @max(STEP_TIME * 2, us_per_step);
             self.speed = speed;
+            std.log.debug("us per step: {d}", .{self.us_per_step});
         }
     }
 
