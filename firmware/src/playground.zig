@@ -211,7 +211,7 @@ pub fn main() !void {
     var ser: SerialTask = .init(uart, &.{
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .DRV_STATUS),
-        TMC2209.Datagram.initWrite(addr, .VACTUAL, 10_000),
+        TMC2209.Datagram.initWrite(addr, .VACTUAL, 5000),
         TMC2209.Datagram.initRead(addr, .VACTUAL),
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .IOIN),
