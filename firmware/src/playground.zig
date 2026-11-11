@@ -216,6 +216,7 @@ pub fn main() !void {
         TMC2209.Datagram.initRead(addr, .IFCNT),
         TMC2209.Datagram.initRead(addr, .IOIN),
         TMC2209.Datagram.initRead(addr, .PWM_AUTO),
+        TMC2209.Datagram.initRead(addr, .OTP_READ),
     });
     ser.schedule(root_scheduler.pri(1));
 

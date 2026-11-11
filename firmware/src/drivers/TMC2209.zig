@@ -57,13 +57,13 @@ test calculateCrc {
 
 pub const Register = enum(u7) {
     GCONF = 0x00, // RW
-    GSTAT = 0x01, // R+WC
+    GSTAT = 0x01, // R/WC
     IFCNT = 0x02, // R
     NODECONF = 0x03, // W
     OTP_PROG = 0x04, // W
     OTP_READ = 0x05, // R
     IOIN = 0x06, // R
-    FACTORY_CONF = 0x07, // RW
+    FACTORY_CONF = 0x07, // R/W
     IHOLD_IRUN = 0x10, // W
     TPOWERDOWN = 0x11, // W
     TSTEP = 0x12, // R
@@ -75,9 +75,9 @@ pub const Register = enum(u7) {
     COOLCONF = 0x42, // W
     MSCNT = 0x6A, // R
     MSCURACT = 0x6B, // R
-    CHOPCONF = 0x6C, // RW
+    CHOPCONF = 0x6C, // R/W
     DRV_STATUS = 0x6F, // R
-    PWMCONF = 0x70, // RW
+    PWMCONF = 0x70, // R/W
     PWM_SCALE = 0x71, // R
     PWM_AUTO = 0x72, // R
 };
@@ -85,7 +85,7 @@ pub const Register = enum(u7) {
 pub const RegValue = union(Register) {
     const Self = @This();
 
-    GCONF: packed struct(u32) {
+    GCONF: packed struct(u32) { // R/W
         i_scale_analog: bool = true,
         internal_rsense: bool = false, // OTP default
         en_spreadcycle: bool = false, // OTP default
@@ -98,55 +98,67 @@ pub const RegValue = union(Register) {
         test_mode: bool = false,
         _0: u22 = 0,
     },
-    GSTAT: packed struct(u32) {
+    GSTAT: packed struct(u32) { // R/WC
         reset: bool,
         drv_err: bool,
         uv_cp: bool,
         _0: u29 = 0,
     },
-    IFCNT: packed struct(u32) {
+    IFCNT: packed struct(u32) { // R
         count: u8,
-        _0: u24 = 0,
+        _0: u24,
     },
-    NODECONF: packed struct(u32) {
+    NODECONF: packed struct(u32) { // W
         _0: u8 = 0,
         send_delay: u4,
         _1: u20 = 0,
     },
-    OTP_PROG: packed struct(u32) {
+    OTP_PROG: packed struct(u32) { // W
         bit: u3,
         byte: u2,
         _0: u3 = 0,
         magic: u8 = 0xbd,
         _1: u16 = 0,
     },
-    OTP_READ: packed struct(u32) {
-        otp0: u8,
-        otp1: u8,
-        otp2: u8,
+    OTP_READ: packed struct(u32) { // R
+        otp0: packed struct(u8) {
+            f_clk_trim: u5,
+            ot_trim: u1,
+            internal_rsense: bool,
+            tbl: u1,
+        },
+        otp1: packed struct(u8) { pwm_grad: u4, pwm_autograd: bool, tpwm_thrs: u3 },
+        otp2: packed struct(u8) {
+            pwm_ofs: bool,
+            pwm_reg: bool,
+            pwm_freq: bool,
+            i_hold_delay: u2,
+            i_hold: u2,
+            en_spreadcycle: bool,
+        },
         _0: u8 = 0,
     },
-    IOIN: packed struct(u32) {
+    IOIN: packed struct(u32) { // R
         en: bool,
-        _0: u1 = 0,
+        _0: u1,
         ms1: bool,
         ms2: bool,
         diag: bool,
-        _1: u1 = 0,
+        _1: u1,
         pdn_uart: bool,
         step: bool,
         spread_en: bool,
         dir: bool,
-        _2: u14 = 0,
+        _2: u14,
         version: u8,
     },
-    FACTORY_CONF: packed struct(u32) {
+    FACTORY_CONF: packed struct(u32) { // R/W
         fclk_trim: u5,
         _0: u3 = 0,
         ot_trim: u2,
         _1: u22 = 0,
     },
-    IHOLD_IRUN: packed struct(u32) {
+    IHOLD_IRUN: packed struct(u32) { // W
         hold: u5,
         _0: u3 = 0,
         run: u5,
@@ -154,21 +166,70 @@ pub const RegValue = union(Register) {
         hold_delay: u4,
         _2: u12 = 0,
     },
-    TPOWERDOWN: u32,
-    TSTEP: packed struct(u32) {
-        step: u20,
-        _0: u12 = 0,
+    TPOWERDOWN: packed struct(u32) { //W
+        time: u8,
+        _0: u24 = 0,
     },
-    TPWMTHRS: u32,
-    TCOOLTHRS: u32,
-    VACTUAL: i32,
-    SGTHRS: u32,
-    SG_RESULT: u32,
-    COOLCONF: u32,
-    MSCNT: u32,
-    MSCURACT: u32,
-    CHOPCONF: u32,
-    DRV_STATUS: packed struct(u32) {
+    TSTEP: packed struct(u32) { // R
+        step: u20,
+        _0: u12,
+    },
+    TPWMTHRS: packed struct(u32) { // W
+        threshold: u20,
+        _0: u12,
+    },
+    TCOOLTHRS: packed struct(u32) { // W
+        threshold: u20,
+        _0: u12,
+    },
+    VACTUAL: packed struct(u32) { // W
+        steps: i24,
+        _0: u8 = 0,
+    },
+    SGTHRS: packed struct(u32) { // W
+        threshold: u8,
+        _0: u24 = 0,
+    },
+    SG_RESULT: packed struct(u32) { // R
+        result: u10,
+        _0: u22,
+    },
+    COOLCONF: packed struct(u32) { // W
+        semin: u4,
+        _0: u1 = 0,
+        seup: u2,
+        _1: u1 = 0,
+        semax: u4,
+        _2: u1 = 0,
+        sedn: u2,
+        seimin: u1,
+        _3: u16 = 0,
+    },
+    MSCNT: packed struct(u32) { // R
+        counter: u10,
+        _0: u22,
+    },
+    MSCURACT: packed struct(u32) { // R
+        cur_b: u9,
+        _0: u7,
+        cur_a: u9,
+        _1: u7,
+    },
+    CHOPCONF: packed struct(u32) { // R/W
+        toff: u4,
+        h_strt: u3,
+        h_end: u4,
+        _0: u4 = 0,
+        tbl: u2,
+        vsense_high: bool,
+        _1: u6 = 0,
+        mres: u4,
+        intpol: bool,
+        dedge: bool,
+        diss2g: bool,
+        diss2vs: bool,
+    },
+    DRV_STATUS: packed struct(u32) { // R
         otpw: bool,
         ot: bool,
         s2ga: bool,
@@ -181,24 +242,34 @@ pub const RegValue = union(Register) {
         t143: bool,
         t150: bool,
         t157: bool,
-        _0: u4 = 0,
+        _0: u4,
         cs_actual: u5,
-        _1: u9 = 0,
+        _1: u9,
         stealth: bool,
         stst: bool,
     },
-    PWMCONF: u32,
-    PWM_SCALE: packed struct(u32) {
-        sum: u8,
-        _0: u8 = 0,
-        auto: u8,
-        _1: u8 = 0,
+    PWMCONF: packed struct(u32) { // R/W
+        pwm_ofs: u8,
+        pwm_grad: u8,
+        pwm_freq: u2,
+        pwm_autoscale: bool,
+        pwm_autograd: bool,
+        freewheel: u2,
+        _0: u2 = 0,
+        pwm_reg: u4,
+        pwm_lim: u4,
     },
-    PWM_AUTO: packed struct(u32) {
+    PWM_SCALE: packed struct(u32) { // R
+        sum: u8,
+        _0: u8,
+        auto: u8,
+        _1: u8,
+    },
+    PWM_AUTO: packed struct(u32) { // R
         ofs: u8,
-        _0: u8 = 0,
+        _0: u8,
         grad: u8,
-        _1: u8 = 0,
+        _1: u8,
     },
 
     pub fn init(reg: Register, v: u32) Self {
