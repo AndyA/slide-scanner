@@ -217,6 +217,14 @@ pub const App = struct {
         };
     }
 
+    fn serialErrorHandler(ctx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
+        _ = ctx;
+        switch (ev) {
+            .data => {},
+            else => std.log.err("Serial error: {any}", .{ev}),
+        }
+    }
+
     fn sendSetupCommands(self: *Self) void {
         const addr = self.config.stepper_addr;
         const cmds: []const Datagram = &.{
@@ -242,7 +250,9 @@ pub const App = struct {
             Datagram.initWrite(addr, .{ .VACTUAL = .{ .speed = 0 } }),
         };
         for (cmds) |cmd| {
-            _ = self.ser.enqueue(cmd);
+            if (self.ser.enqueue(cmd)) |ee| {
+                ee.addListener(serialErrorHandler, self);
+            } else unreachable;
         }
     }
 
@@ -259,12 +269,14 @@ pub const App = struct {
                             var slot = &@field(me.periodic, @tagName(reg));
                             try slot.update(d.value().value());
                         },
-                        else => std.log.err("Serial error: {any}", .{ev}),
+                        else => {},
                     }
                 }
             };
-            if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
+            if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee| {
                 ee.addListener(shim.handler, self);
+                ee.addListener(serialErrorHandler, self);
+            } else unreachable;
         }
 
         switch (self.serial_state) {
