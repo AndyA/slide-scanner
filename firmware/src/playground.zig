@@ -88,12 +88,6 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
-const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
-const Switches = switchset.SwitcheSet(SwitchMap, 3);
-
-const FastScheduler = sched.makeScheduler(8);
-const SlowScheduler = sched.makeNestedScheduler(8, 250);
-
 const SwitchBox = struct {
     const Self = @This();
     pins: [4]Pin,
@@ -274,6 +268,12 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
         },
     }
 }
+
+const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
+const Switches = switchset.SwitcheSet(SwitchMap, 3);
+
+const FastScheduler = sched.makeScheduler(8);
+const SlowScheduler = sched.makeNestedScheduler(8, 250);
 
 pub fn main() !void {
     logging.init(.{});
