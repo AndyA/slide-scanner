@@ -40,6 +40,10 @@ pub fn Emitter(comptime PayloadType: type, comptime size: u8) type {
 
         pub const emit = shim.emit;
 
+        pub fn reset(self: *Self) void {
+            self.* = .empty;
+        }
+
         fn emitPayload(self: *Self, payload: PayloadType) !void {
             assert(self.hot == 0);
             self.hot = self.used;

@@ -12,7 +12,6 @@ const assert = std.debug.assert;
 const events = @import("runtime/events.zig");
 const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
-const P = @import("runtime/promise.zig");
 const Later = @import("runtime/Later.zig");
 
 const Blinker = @import("drivers/Blinker.zig");
@@ -103,9 +102,9 @@ const SwitchBox = struct {
 };
 
 const SerialCommand = struct {
-    pub const Promise = P.Promise(?TMC2209.RegValue, 3);
+    pub const Emitter = events.Emitter(TMC2209.SerialIO.Event, 3);
     request: Datagram,
-    promise: Promise = .empty,
+    ee: Emitter = .empty,
 };
 
 const SerialEngine = struct {
@@ -130,7 +129,7 @@ const SerialEngine = struct {
         slot.schedule(slot.now, task, self);
     }
 
-    pub fn enqueue(self: *Self, dg: Datagram) ?*SerialCommand.Promise {
+    pub fn enqueue(self: *Self, dg: Datagram) ?*SerialCommand.Emitter {
         assert(self.q_len <= QUEUE_SIZE);
         if (self.q_len == QUEUE_SIZE)
             return null;
@@ -138,10 +137,10 @@ const SerialEngine = struct {
         const q_end = (self.q_start + self.q_len) % QUEUE_SIZE;
         const slot: *SerialCommand = &self.queue[q_end];
         slot.request = dg;
-        slot.promise.reset();
+        slot.ee.reset();
         if (!self.running)
             self.start();
-        return &slot.promise;
+        return &slot.ee;
     }
 
     fn retire(self: *Self) void {
@@ -174,14 +173,9 @@ const SerialEngine = struct {
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         const cmd = self.currentCommand().?;
-        std.log.debug("listener received {any}", .{payload});
-        switch (payload) {
-            .data => |dg| cmd.promise.resolve(dg.value()),
-            .ready => cmd.promise.resolve(null),
-            .data_err => cmd.promise.reject(error.SerialDataError),
-            .crc_err => cmd.promise.reject(error.SerialCRCError),
-            .timeout => cmd.promise.reject(error.SerialTimeout),
-        }
+        // std.log.debug("listener received {any}", .{payload});
+        try cmd.ee.emit(payload);
+
         self.retire();
         self.start();
         if (!self.running)
@@ -194,19 +188,50 @@ pub const AppConfig = struct {
     uart: hal.uart.UART,
 };
 
-const FastScheduler = sched.makeScheduler(8);
-const SlowScheduler = sched.makeNestedScheduler(8, 250);
-
 pub const App = struct {
     const Self = @This();
 
-    const State = enum { INIT };
+    const FastScheduler = sched.makeScheduler(8);
+    const SlowScheduler = sched.makeNestedScheduler(8, 250);
+
+    const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN };
+
+    const Periodic = blk: {
+        var names: [PERIODIC.len][]const u8 = undefined;
+        var types: [PERIODIC.len]type = undefined;
+        var attrs: [PERIODIC.len]std.lang.Type.Struct.FieldAttributes = undefined;
+
+        for (PERIODIC, &names, &types, &attrs) |reg, *n, *t, *a| {
+            const RegType = TMC2209.RegValue.RegType(reg);
+            n.* = @tagName(reg);
+            t.* = struct {
+                current: ?RegType = null,
+                ee: events.Emitter(RegType, 3) = .empty,
+                fn update(self: *@This(), value: u32) !void {
+                    if (self.current) |cur|
+                        if (@as(u32, @bitCast(cur)) == value)
+                            return;
+
+                    const nv: RegType = @bitCast(value);
+                    // std.log.debug("update {s}: {any}", .{ @tagName(reg), nv });
+                    self.current = nv;
+                    try self.ee.emit(nv);
+                }
+            };
+            a.* = .{};
+        }
+
+        break :blk @Struct(.auto, null, &names, &types, &attrs);
+    };
+
+    const SerialState = enum { INIT };
 
     config: AppConfig,
-    state: State = .INIT,
+    serial_state: SerialState = .INIT,
     root_scheduler: FastScheduler = .empty,
     slow_scheduler: SlowScheduler = .empty,
     ser: SerialEngine,
+    periodic: Periodic = undefined,
 
     pub fn init(config: AppConfig) Self {
         return .{
@@ -246,8 +271,28 @@ pub const App = struct {
 
     fn serialEvent(ctx: *anyopaque) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        _ = self;
-        std.log.debug("serial engine idle", .{});
+        // std.log.debug("serial engine idle ({s})", .{@tagName(self.serial_state)});
+
+        inline for (PERIODIC) |reg| {
+            const shim = struct {
+                fn handler(cx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
+                    const me: *Self = @ptrCast(@alignCast(cx));
+                    switch (ev) {
+                        .data => |d| {
+                            var slot = &@field(me.periodic, @tagName(reg));
+                            try slot.update(d.value().value());
+                        },
+                        else => std.log.err("Serial error: {any}", .{ev}),
+                    }
+                }
+            };
+            if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
+                ee.addListener(shim.handler, self);
+        }
+
+        switch (self.serial_state) {
+            .INIT => {},
+        }
     }
 
     fn installHandlers(self: *Self) void {
@@ -263,6 +308,8 @@ pub const App = struct {
         self.installHandlers();
         self.sendSetupCommands();
         self.scheduleTasks();
+
+        std.log.debug("{any}", .{self.periodic});
 
         while (true) {
             Later.poll();

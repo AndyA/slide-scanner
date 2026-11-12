@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const print = std.debug.print;
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = microzig.drivers.time;
@@ -295,7 +296,23 @@ pub const RegValue = union(Register) {
             inline else => |v| @as(u32, @bitCast(v)),
         };
     }
+
+    pub fn RegType(comptime r: Register) type {
+        const tag_index = blk: {
+            const tag = @backingInt(r);
+            const info = @typeInfo(Register).@"enum";
+            for (info.field_values, 0..) |t, i|
+                if (t == tag) break :blk i;
+            unreachable;
+        };
+        return @typeInfo(Self).@"union".field_types[tag_index];
+    }
 };
+
+test RegValue {
+    const mscnt: RegValue.RegType(.MSCNT) = .{ .counter = 0, ._0 = 0 };
+    _ = mscnt; // the test is that it compiles
+}
 
 pub const ReadDG = packed struct {
     comptime {
