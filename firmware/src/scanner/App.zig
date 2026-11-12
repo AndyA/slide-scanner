@@ -91,7 +91,7 @@ fn sendSetupCommands(self: *Self) void {
             .i_scale_analog = true,
             .pdn_disable = true,
             .mstep_reg_select = true,
-            .shaft = true,
+            .shaft = false,
         } }),
         Datagram.initWrite(addr, .{ .CHOPCONF = .{
             .toff = 3,

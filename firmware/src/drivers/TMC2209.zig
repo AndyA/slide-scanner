@@ -770,7 +770,7 @@ pub const Stepper = struct {
     }
 
     fn notifyState(self: *Self, state: State) !void {
-        std.log.info("{s} -> {s}", .{ @tagName(self.state), @tagName(state) });
+        // std.log.info("{s} -> {s}", .{ @tagName(self.state), @tagName(state) });
         self.state = state;
         try self.state_ee.emit(.{ .target = self, .state = state });
     }
