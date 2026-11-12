@@ -179,8 +179,7 @@ pub const App = struct {
 
         for (PERIODIC, &names, &types, &attrs) |reg, *n, *t, *a| {
             const RegType = TMC2209.RegValue.RegType(reg);
-            n.* = @tagName(reg);
-            t.* = struct {
+            const FieldType = struct {
                 current: ?RegType = null,
                 ee: events.Emitter(RegType, 3) = .empty,
                 fn update(self: *@This(), value: u32) !void {
@@ -194,7 +193,9 @@ pub const App = struct {
                     try self.ee.emit(nv);
                 }
             };
-            a.* = .{};
+            n.* = @tagName(reg);
+            t.* = FieldType;
+            a.* = .{ .default_value_ptr = &@as(FieldType, .{}) };
         }
 
         break :blk @Struct(.auto, null, &names, &types, &attrs);
@@ -207,7 +208,7 @@ pub const App = struct {
     root_scheduler: FastScheduler = .empty,
     slow_scheduler: SlowScheduler = .empty,
     ser: SerialEngine,
-    periodic: Periodic = undefined,
+    periodic: Periodic = .{},
 
     pub fn init(config: AppConfig) Self {
         return .{
@@ -249,22 +250,22 @@ pub const App = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         // std.log.debug("serial engine idle ({s})", .{@tagName(self.serial_state)});
 
-        // inline for (PERIODIC) |reg| {
-        //     const shim = struct {
-        //         fn handler(cx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
-        //             const me: *Self = @ptrCast(@alignCast(cx));
-        //             switch (ev) {
-        //                 .data => |d| {
-        //                     var slot = &@field(me.periodic, @tagName(reg));
-        //                     try slot.update(d.value().value());
-        //                 },
-        //                 else => std.log.err("Serial error: {any}", .{ev}),
-        //             }
-        //         }
-        //     };
-        //     if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
-        //         ee.addListener(shim.handler, self);
-        // }
+        inline for (PERIODIC) |reg| {
+            const shim = struct {
+                fn handler(cx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
+                    const me: *Self = @ptrCast(@alignCast(cx));
+                    switch (ev) {
+                        .data => |d| {
+                            var slot = &@field(me.periodic, @tagName(reg));
+                            try slot.update(d.value().value());
+                        },
+                        else => std.log.err("Serial error: {any}", .{ev}),
+                    }
+                }
+            };
+            if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
+                ee.addListener(shim.handler, self);
+        }
 
         switch (self.serial_state) {
             .INIT => {},
