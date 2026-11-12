@@ -100,7 +100,8 @@ pub fn Emitter(comptime PayloadType: type, comptime size: u8) type {
                 self.slots[index].mortal = true;
                 return 1;
             } else {
-                if (self.slots[index].mortal) self.mortals -= 1;
+                if (self.slots[index].mortal)
+                    self.mortals -= 1;
                 @memmove(
                     self.slots[index .. self.used - 1],
                     self.slots[index + 1 .. self.used],

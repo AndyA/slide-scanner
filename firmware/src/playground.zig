@@ -12,7 +12,6 @@ const assert = std.debug.assert;
 const events = @import("runtime/events.zig");
 const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
-const Later = @import("runtime/Later.zig");
 
 const Blinker = @import("drivers/Blinker.zig");
 const switchset = @import("drivers/switchset.zig");
@@ -64,29 +63,6 @@ pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noretu
 }
 
 const Pin = hal.gpio.Pin;
-
-// Compile-time pin configuration
-const pin_config = hal.pins.GlobalConfiguration{
-    .GPIO2 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
-    .GPIO3 = .{ .name = "blk_led", .direction = .out },
-    .GPIO4 = .{ .name = "blu_sw", .direction = .in, .pull = .up },
-    .GPIO5 = .{ .name = "blu_led", .direction = .out },
-    .GPIO6 = .{ .name = "yel_sw", .direction = .in, .pull = .up },
-    .GPIO7 = .{ .name = "yel_led", .direction = .out },
-    .GPIO8 = .{ .name = "red_sw", .direction = .in, .pull = .up },
-    .GPIO9 = .{ .name = "red_led", .direction = .out },
-    .GPIO25 = .{ .name = "led", .direction = .out },
-
-    // Stepper
-    .GPIO15 = .{ .name = "lim_opto", .direction = .in, .pull = .up },
-    .GPIO16 = .{ .name = "dir", .direction = .out },
-    .GPIO17 = .{ .name = "step", .direction = .out },
-    .GPIO18 = .{ .name = "mode2", .direction = .out },
-    .GPIO19 = .{ .name = "mode1", .direction = .out },
-    .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
-    .GPIO21 = .{ .name = "pdn_rx", .direction = .in },
-    .GPIO22 = .{ .name = "en", .direction = .out },
-};
 
 const SwitchBox = struct {
     const Self = @This();
@@ -273,22 +249,22 @@ pub const App = struct {
         const self: *Self = @ptrCast(@alignCast(ctx));
         // std.log.debug("serial engine idle ({s})", .{@tagName(self.serial_state)});
 
-        inline for (PERIODIC) |reg| {
-            const shim = struct {
-                fn handler(cx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
-                    const me: *Self = @ptrCast(@alignCast(cx));
-                    switch (ev) {
-                        .data => |d| {
-                            var slot = &@field(me.periodic, @tagName(reg));
-                            try slot.update(d.value().value());
-                        },
-                        else => std.log.err("Serial error: {any}", .{ev}),
-                    }
-                }
-            };
-            if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
-                ee.addListener(shim.handler, self);
-        }
+        // inline for (PERIODIC) |reg| {
+        //     const shim = struct {
+        //         fn handler(cx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
+        //             const me: *Self = @ptrCast(@alignCast(cx));
+        //             switch (ev) {
+        //                 .data => |d| {
+        //                     var slot = &@field(me.periodic, @tagName(reg));
+        //                     try slot.update(d.value().value());
+        //                 },
+        //                 else => std.log.err("Serial error: {any}", .{ev}),
+        //             }
+        //         }
+        //     };
+        //     if (self.ser.enqueue(Datagram.initRead(self.config.stepper_addr, reg))) |ee|
+        //         ee.addListener(shim.handler, self);
+        // }
 
         switch (self.serial_state) {
             .INIT => {},
@@ -309,10 +285,7 @@ pub const App = struct {
         self.sendSetupCommands();
         self.scheduleTasks();
 
-        std.log.debug("{any}", .{self.periodic});
-
         while (true) {
-            Later.poll();
             _ = try self.root_scheduler.poll(hal.time.get_time_since_boot());
         }
     }
@@ -335,6 +308,29 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
     }
 }
 
+// Compile-time pin configuration
+const pin_config = hal.pins.GlobalConfiguration{
+    .GPIO2 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
+    .GPIO3 = .{ .name = "blk_led", .direction = .out },
+    .GPIO4 = .{ .name = "blu_sw", .direction = .in, .pull = .up },
+    .GPIO5 = .{ .name = "blu_led", .direction = .out },
+    .GPIO6 = .{ .name = "yel_sw", .direction = .in, .pull = .up },
+    .GPIO7 = .{ .name = "yel_led", .direction = .out },
+    .GPIO8 = .{ .name = "red_sw", .direction = .in, .pull = .up },
+    .GPIO9 = .{ .name = "red_led", .direction = .out },
+    .GPIO25 = .{ .name = "led", .direction = .out },
+
+    // Stepper
+    .GPIO15 = .{ .name = "lim_opto", .direction = .in, .pull = .up },
+    .GPIO16 = .{ .name = "dir", .direction = .out },
+    .GPIO17 = .{ .name = "step", .direction = .out },
+    .GPIO18 = .{ .name = "mode2", .direction = .out },
+    .GPIO19 = .{ .name = "mode1", .direction = .out },
+    .GPIO20 = .{ .name = "pdn_tx", .direction = .out },
+    .GPIO21 = .{ .name = "pdn_rx", .direction = .in },
+    .GPIO22 = .{ .name = "en", .direction = .out },
+};
+
 const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
@@ -342,10 +338,6 @@ pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
     const pins = pin_config.apply();
-    // var root_scheduler: FastScheduler = .empty;
-    // var slow_scheduler: SlowScheduler = .empty;
-
-    // slow_scheduler.schedule(root_scheduler.pri(-1));
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
