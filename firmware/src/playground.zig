@@ -9,6 +9,7 @@ const USB_Device = hal.usb.Polled(.{});
 
 const assert = std.debug.assert;
 
+const events = @import("runtime/events.zig");
 const logging = @import("runtime/logging.zig");
 const sched = @import("runtime/scheduler.zig");
 const P = @import("runtime/promise.zig");
@@ -101,8 +102,6 @@ const SwitchBox = struct {
     }
 };
 
-const uart = hal.uart.instance.num(1);
-
 const SerialCommand = struct {
     pub const Promise = P.Promise(?TMC2209.RegValue, 3);
     request: Datagram,
@@ -120,9 +119,10 @@ const SerialEngine = struct {
     q_start: u8 = 0,
     q_len: u8 = 0,
     running: bool = false,
+    ee: events.Emitter(void, 3) = .empty,
 
-    pub fn init(u: hal.uart.UART) Self {
-        return .{ .sio = .init(u) };
+    pub fn init(uart: hal.uart.UART) Self {
+        return .{ .sio = .init(uart) };
     }
 
     pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {
@@ -174,6 +174,7 @@ const SerialEngine = struct {
     fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
         const cmd = self.currentCommand().?;
+        std.log.debug("listener received {any}", .{payload});
         switch (payload) {
             .data => |dg| cmd.promise.resolve(dg.value()),
             .ready => cmd.promise.resolve(null),
@@ -183,71 +184,89 @@ const SerialEngine = struct {
         }
         self.retire();
         self.start();
+        if (!self.running)
+            try self.ee.emit();
     }
 };
 
-// Send the init preamble commands
-// Run the monitoring commands once
-// Signal ready
-// Run the monitoring commands unless there's anything in the queue
+pub const AppConfig = struct {
+    stepper_addr: u2 = 0,
+    uart: hal.uart.UART,
+};
 
-const SerialTask = struct {
+const FastScheduler = sched.makeScheduler(8);
+const SlowScheduler = sched.makeNestedScheduler(8, 250);
+
+pub const App = struct {
     const Self = @This();
 
-    const PERIOD = 100;
+    const State = enum { INIT };
 
-    sio: TMC2209.SerialIO = undefined,
-    sequence: []const Datagram = undefined,
-    pos: u8 = 0,
+    config: AppConfig,
+    state: State = .INIT,
+    root_scheduler: FastScheduler = .empty,
+    slow_scheduler: SlowScheduler = .empty,
+    ser: SerialEngine,
 
-    pub fn init(u: hal.uart.UART, sequence: []const Datagram) Self {
-        return .{ .sio = .init(u), .sequence = sequence };
+    pub fn init(config: AppConfig) Self {
+        return .{
+            .config = config,
+            .ser = .init(config.uart),
+        };
     }
 
-    pub fn schedule(self: *Self, slot: *sched.ScheduleSlot) void {
-        self.sio.ee.addListener(listener, self);
-        slot.schedule(slot.now, task, self);
-    }
-
-    fn task(ctx: *anyopaque, slot: *sched.ScheduleSlot) !void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        self.sio.poll();
-        slot.delay(PERIOD);
-    }
-
-    fn nextDatagram(self: *Self) ?Datagram {
-        if (self.pos == self.sequence.len)
-            return null;
-        defer self.pos += 1;
-        return self.sequence[self.pos];
-    }
-
-    pub fn pump(self: *Self) void {
-        if (self.nextDatagram()) |dg| {
-            // std.log.info("sending {f}", .{dg});
-            self.sio.send(dg);
-        } else {
-            std.log.info("All Datagrams sent", .{});
+    fn sendSetupCommands(self: *Self) void {
+        const addr = self.config.stepper_addr;
+        const cmds: []const Datagram = &.{
+            Datagram.initWrite(addr, .{ .GCONF = .{
+                .i_scale_analog = true,
+                .pdn_disable = true,
+                .mstep_reg_select = true,
+                .shaft = true,
+            } }),
+            Datagram.initWrite(addr, .{ .CHOPCONF = .{
+                .toff = 3,
+                .h_strt = 5,
+                .h_end = 0,
+                .tbl = 2,
+                .vsense_high = false,
+                .mres = 4,
+                .intpol = true,
+                .dedge = false,
+                .diss2g = false,
+                .diss2vs = false,
+            } }),
+            Datagram.initWrite(addr, .{ .NODECONF = .{ .send_delay = 0 } }),
+            Datagram.initWrite(addr, .{ .VACTUAL = .{ .speed = 0 } }),
+        };
+        for (cmds) |cmd| {
+            _ = self.ser.enqueue(cmd);
         }
     }
 
-    fn listener(ctx: *anyopaque, payload: TMC2209.SerialIO.Event) !void {
+    fn serialEvent(ctx: *anyopaque) !void {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        switch (payload) {
-            .data => |dg| {
-                std.log.info(
-                    "sio event: {s} {f} {any}",
-                    .{ @tagName(payload), dg, dg.value() },
-                );
-                self.pump();
-            },
-            .ready => {
-                std.log.info("sio event: {s}", .{@tagName(payload)});
-                self.pump();
-            },
-            else => {
-                std.log.info("sio event: {s}", .{@tagName(payload)});
-            },
+        _ = self;
+        std.log.debug("serial engine idle", .{});
+    }
+
+    fn installHandlers(self: *Self) void {
+        self.ser.ee.addListener(serialEvent, self);
+    }
+
+    fn scheduleTasks(self: *Self) void {
+        self.ser.schedule(self.root_scheduler.pri(1));
+    }
+
+    pub fn start(self: *Self) !void {
+        self.slow_scheduler.schedule(self.root_scheduler.pri(-1));
+        self.installHandlers();
+        self.sendSetupCommands();
+        self.scheduleTasks();
+
+        while (true) {
+            Later.poll();
+            _ = try self.root_scheduler.poll(hal.time.get_time_since_boot());
         }
     }
 };
@@ -272,20 +291,20 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
 const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
-const FastScheduler = sched.makeScheduler(8);
-const SlowScheduler = sched.makeNestedScheduler(8, 250);
-
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
     const pins = pin_config.apply();
-    var root_scheduler: FastScheduler = .empty;
-    var slow_scheduler: SlowScheduler = .empty;
+    // var root_scheduler: FastScheduler = .empty;
+    // var slow_scheduler: SlowScheduler = .empty;
 
-    slow_scheduler.schedule(root_scheduler.pri(-1));
+    // slow_scheduler.schedule(root_scheduler.pri(-1));
 
     pins.pdn_tx.set_function(.uart);
     pins.pdn_rx.set_function(.uart);
+
+    const uart = hal.uart.instance.num(1);
+    var app: App = .init(.{ .uart = uart });
 
     uart.apply(.{ .clock_config = hal.clock_config });
 
@@ -297,50 +316,17 @@ pub fn main() !void {
         .step_pin = pins.step,
         .dir_pin = pins.dir,
     });
-    try stepper.start(root_scheduler.pri(0));
+    try stepper.start(app.root_scheduler.pri(0));
     stepper.setSpeed(200 * 16);
     stepper.setRemaining(20_000 * 16);
 
-    const addr: u8 = 0;
-    var ser: SerialTask = .init(uart, &.{
-        Datagram.initRead(addr, .IFCNT),
-        Datagram.initWrite(addr, .{ .GCONF = .{
-            .i_scale_analog = true,
-            .pdn_disable = true,
-            .mstep_reg_select = true,
-            .shaft = true,
-        } }),
-        Datagram.initWrite(addr, .{ .CHOPCONF = .{
-            .toff = 3,
-            .h_strt = 5,
-            .h_end = 0,
-            .tbl = 2,
-            .vsense_high = false,
-            .mres = 4,
-            .intpol = true,
-            .dedge = false,
-            .diss2g = false,
-            .diss2vs = false,
-        } }),
-        Datagram.initWrite(addr, .{ .NODECONF = .{ .send_delay = 0 } }),
-        Datagram.initWrite(addr, .{ .VACTUAL = .{ .speed = 0 } }),
-        Datagram.initRead(addr, .GSTAT),
-        Datagram.initWrite(addr, .{ .GSTAT = .{ .reset = true } }),
-        Datagram.initRead(addr, .GSTAT),
-        Datagram.initRead(addr, .IFCNT),
-        Datagram.initRead(addr, .DRV_STATUS),
-        Datagram.initRead(addr, .IOIN),
-        Datagram.initRead(addr, .PWM_AUTO),
-        Datagram.initRead(addr, .OTP_READ),
-        Datagram.initRead(addr, .CHOPCONF),
-    });
-    ser.schedule(root_scheduler.pri(1));
+    // app.ser.schedule(app.root_scheduler.pri(1));
 
     var usb_controller: USB_Controller = .init;
     var usb_device: USB_Device = .init();
     var usb_task: USB = .init(&usb_controller, &usb_device);
     usb_task.ee.addListener(usbEvent, &usb_task);
-    usb_task.schedule(root_scheduler.pri(2));
+    usb_task.schedule(app.root_scheduler.pri(2));
 
     var box: SwitchBox = .{ .pins = .{
         pins.red_led,
@@ -360,15 +346,10 @@ pub fn main() !void {
     switches.addListener(.YEL, SwitchBox.onSwitch, &box);
     switches.addListener(.BLU, SwitchBox.onSwitch, &box);
     switches.addListener(.BLK, SwitchBox.onSwitch, &box);
-    switches.schedule(slow_scheduler.pri(0));
+    switches.schedule(app.slow_scheduler.pri(0));
 
     var blinker: Blinker = .init(pins.led, 100_000);
-    blinker.schedule(slow_scheduler.pri(1));
+    blinker.schedule(app.slow_scheduler.pri(1));
 
-    ser.pump();
-
-    while (true) {
-        Later.poll();
-        _ = try root_scheduler.poll(hal.time.get_time_since_boot());
-    }
+    try app.start();
 }
