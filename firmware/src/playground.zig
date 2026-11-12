@@ -170,7 +170,7 @@ pub const App = struct {
     const FastScheduler = sched.makeScheduler(8);
     const SlowScheduler = sched.makeNestedScheduler(8, 250);
 
-    const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN };
+    const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN, .SG_RESULT };
 
     const Periodic = blk: {
         var names: [PERIODIC.len][]const u8 = undefined;
@@ -201,10 +201,10 @@ pub const App = struct {
         break :blk @Struct(.auto, null, &names, &types, &attrs);
     };
 
-    const SerialState = enum { INIT };
+    const SerialState = enum { INIT_CONFIG, INIT_STATUS, READY };
 
     config: AppConfig,
-    serial_state: SerialState = .INIT,
+    serial_state: SerialState = .INIT_CONFIG,
     root_scheduler: FastScheduler = .empty,
     slow_scheduler: SlowScheduler = .empty,
     ser: SerialEngine,
@@ -268,8 +268,17 @@ pub const App = struct {
         }
 
         switch (self.serial_state) {
-            .INIT => {},
+            .INIT_CONFIG => self.serial_state = .INIT_STATUS,
+            .INIT_STATUS => {
+                self.serial_state = .READY;
+                self.ready();
+            },
+            .READY => {},
         }
+    }
+
+    fn ready(self: *Self) void {
+        std.log.info("App ready ({any})", .{self.periodic});
     }
 
     fn installHandlers(self: *Self) void {
