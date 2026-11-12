@@ -756,6 +756,10 @@ pub const Stepper = struct {
         self.steps_remaining = pos - self.current_position;
     }
 
+    pub fn reZero(self: *Self) void {
+        self.current_position = 0;
+    }
+
     pub fn setSpeed(self: *Self, speed: u32) void {
         if (speed != self.speed) {
             const us_per_step = 1_000_000 / speed;
