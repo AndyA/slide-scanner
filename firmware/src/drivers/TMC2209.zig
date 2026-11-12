@@ -493,7 +493,7 @@ pub const SerialIO = struct {
     const Emitter = events.Emitter(Event, 5);
 
     const RETRY_DELAY = time.Duration.from_ms(1);
-    const TIMEOUT = time.Duration.from_ms(50);
+    const TIMEOUT = time.Duration.from_ms(250);
 
     u: hal.uart.UART,
     state: State = .IDLE,
@@ -660,12 +660,12 @@ pub const Stepper = struct {
         STOPPING,
     };
 
-    pub const EventPayload = struct {
+    pub const Event = struct {
         target: *Self,
         state: State,
     };
 
-    pub const RTEventPayload = struct {
+    pub const RTEvent = struct {
         target: *Self,
         state: State,
         now: time.Absolute,
@@ -715,7 +715,7 @@ pub const Stepper = struct {
     /// Event emitter - gets notifications of significant state changes:
     ///   .INIT <=> .IDLE
     ///   .IDLE <=> .MOVING
-    state_ee: events.Emitter(EventPayload, 5) = .empty,
+    state_ee: events.Emitter(Event, 5) = .empty,
 
     /// Realtime event emitter - called after every step before the delay
     /// to the next step is calculated. Event handlers can usefully vary
@@ -723,7 +723,7 @@ pub const Stepper = struct {
     /// sense to have multiple parties fighting over control of the
     /// speed. Having two allows a handler to be hooked with `once` and
     /// be able to re-hook using `once` again from within the handler.
-    rt_ee: events.Emitter(RTEventPayload, 2) = .empty,
+    rt_ee: events.Emitter(RTEvent, 2) = .empty,
 
     pub fn init(config: Config) Self {
         return .{ .config = config };

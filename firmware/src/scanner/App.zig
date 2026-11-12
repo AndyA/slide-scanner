@@ -11,6 +11,7 @@ const sched = @import("../runtime/scheduler.zig");
 const TMC2209 = @import("../drivers/TMC2209.zig");
 
 const SerialEngine = @import("SerialEngine.zig");
+const Task = @import("tasks.zig").Task;
 
 const Datagram = TMC2209.Datagram;
 
@@ -19,6 +20,7 @@ const Self = @This();
 pub const AppConfig = struct {
     stepper_addr: u2 = 0,
     uart: hal.uart.UART,
+    stepper_config: TMC2209.Stepper.Config,
 };
 
 const FastScheduler = sched.makeScheduler(8);
@@ -62,12 +64,15 @@ serial_state: SerialState = .INIT_CONFIG,
 root_scheduler: FastScheduler = .empty,
 slow_scheduler: SlowScheduler = .empty,
 ser: SerialEngine,
+stepper: TMC2209.Stepper,
 periodic: Periodic = .{},
+task: ?Task = null,
 
 pub fn init(config: AppConfig) Self {
     return .{
         .config = config,
         .ser = .init(config.uart),
+        .stepper = .init(config.stepper_config),
     };
 }
 
@@ -146,13 +151,28 @@ fn serialEvent(ctx: *anyopaque) !void {
 
 fn ready(self: *Self) void {
     std.log.info("App ready ({any})", .{self.periodic});
+    self.runTask(.tester);
+}
+
+pub fn runTask(self: *Self, id: Task.ID) void {
+    self.task = Task.init(id, self);
+    self.task.?.start(self);
+}
+
+pub fn exitTask(self: *Self, status: []const u8) void {
+    if (self.task) |*t| {
+        std.log.info("{s} {s}", .{ @tagName(t.*), status });
+        t.stop(self);
+        self.task = null;
+    } else unreachable;
 }
 
 fn installHandlers(self: *Self) void {
     self.ser.ee.addListener(serialEvent, self);
 }
 
-fn scheduleTasks(self: *Self) void {
+fn scheduleTasks(self: *Self) !void {
+    try self.stepper.start(self.root_scheduler.pri(0));
     self.ser.schedule(self.root_scheduler.pri(1));
 }
 
@@ -160,7 +180,7 @@ pub fn start(self: *Self) !void {
     self.slow_scheduler.schedule(self.root_scheduler.pri(-1));
     self.installHandlers();
     self.sendSetupCommands();
-    self.scheduleTasks();
+    try self.scheduleTasks();
 
     while (true) {
         _ = try self.root_scheduler.poll(hal.time.get_time_since_boot());

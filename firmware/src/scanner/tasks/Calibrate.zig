@@ -3,16 +3,14 @@ const App = @import("../App.zig");
 
 const Self = @This();
 
-app: App,
-
-pub fn init(app: *App) Self {
-    return .{ .app = app };
+pub fn start(self: *Self, app: *App) void {
+    _ = self;
+    std.log.info("calibrate start", .{});
+    app.exitTask("Calibrated");
 }
 
-pub fn start(self: *Self) void {
+pub fn stop(self: *Self, app: *App) void {
+    std.log.info("calibrate stop", .{});
     _ = self;
-}
-
-pub fn stop(self: *Self) void {
-    _ = self;
+    _ = app;
 }

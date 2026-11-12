@@ -133,21 +133,16 @@ pub fn main() !void {
     pins.pdn_rx.set_function(.uart);
 
     const uart = hal.uart.instance.num(1);
-    var app: App = .init(.{ .uart = uart });
+    var app: App = .init(.{ .uart = uart, .stepper_config = .{
+        .step_pin = pins.step,
+        .dir_pin = pins.dir,
+    } });
 
     uart.apply(.{ .clock_config = hal.clock_config });
 
     pins.en.put(0);
     pins.mode1.put(0);
     pins.mode2.put(0);
-
-    var stepper: TMC2209.Stepper = .init(.{
-        .step_pin = pins.step,
-        .dir_pin = pins.dir,
-    });
-    try stepper.start(app.root_scheduler.pri(0));
-    stepper.setSpeed(200 * 16);
-    stepper.setRemaining(20_000 * 16);
 
     // app.ser.schedule(app.root_scheduler.pri(1));
 
