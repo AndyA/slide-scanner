@@ -33,7 +33,7 @@ pub fn ensure(self: *Self, worker: Worker, ctx: *anyopaque) void {
 }
 
 pub fn cancel(self: *Self) void {
-    if (self.worker == null)
+    if (!self.scheduled)
         return;
     var tick = head;
     var prev: ?*Self = null;
