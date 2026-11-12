@@ -17,7 +17,7 @@ pub fn Promise(comptime T: type, comptime then_size: u8) type {
         pub const Then = *const fn (ctx: *anyopaque, value: Value) void;
         const ThenSlot = struct { then_fn: Then, ctx: *anyopaque };
 
-        pub const empty = .{};
+        pub const empty: Self = .{};
 
         value: Value = .{ .pending = {} },
         thens: [then_size]ThenSlot = undefined,
