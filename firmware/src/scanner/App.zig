@@ -6,6 +6,7 @@ const time = microzig.drivers.time;
 const assert = std.debug.assert;
 const Pin = hal.gpio.Pin;
 
+const switchset = @import("../drivers/switchset.zig");
 const events = @import("../runtime/events.zig");
 const sched = @import("../runtime/scheduler.zig");
 
@@ -15,6 +16,7 @@ const SerialEngine = @import("SerialEngine.zig");
 const Task = @import("tasks.zig").Task;
 
 const Datagram = TMC2209.Datagram;
+const Calibration = @import("tasks/Calibrate.zig").Calibration;
 
 const Self = @This();
 
@@ -23,10 +25,20 @@ pub const AppConfig = struct {
     uart: hal.uart.UART,
     stepper_config: TMC2209.Stepper.Config,
     opto_pin: Pin,
+    task_switches: [4]Pin,
+    task_leds: [4]Pin,
 };
 
 const FastScheduler = sched.makeScheduler(8);
 const SlowScheduler = sched.makeNestedScheduler(8, 250);
+
+const SwitchMap = enum(u8) {
+    BLK,
+    BLU,
+    YEL,
+    RED,
+};
+const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
 const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN, .SG_RESULT };
 
@@ -65,18 +77,20 @@ config: AppConfig,
 serial_state: SerialState = .INIT_CONFIG,
 root_scheduler: FastScheduler = .empty,
 slow_scheduler: SlowScheduler = .empty,
+switches: Switches,
 ser: SerialEngine,
 stepper: TMC2209.Stepper,
 periodic: Periodic = .{},
 task: ?Task = null,
 
-calibration: ?@import("tasks/Calibrate.zig").Calibration = null,
+calibration: ?Calibration = null,
 
 pub fn init(config: AppConfig) Self {
     return .{
         .config = config,
         .ser = .init(config.uart),
         .stepper = .init(config.stepper_config),
+        .switches = .init(config.task_switches),
     };
 }
 
@@ -161,23 +175,48 @@ fn ready(self: *Self) void {
 pub fn runTask(self: *Self, id: Task.ID) void {
     self.task = Task.init(id, self);
     self.task.?.start(self);
+    const which = @backingInt(id);
+    if (which < self.config.task_leds.len) {
+        self.config.task_leds[which].put(1);
+    }
+    std.log.info("task {d}", .{which});
 }
 
 pub fn exitTask(self: *Self, status: []const u8) void {
     if (self.task) |*t| {
+        const which = @backingInt(t.*);
+        if (which < self.config.task_leds.len) {
+            self.config.task_leds[which].put(0);
+        }
         std.log.info("{s} {s}", .{ @tagName(t.*), status });
         t.stop(self);
         self.task = null;
     } else unreachable;
 }
 
+fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    std.log.info("{any}", .{e});
+    if (e.state) {
+        switch (e.which) {
+            .BLK => self.runTask(.calibrate),
+            else => {},
+        }
+    }
+}
+
 fn installHandlers(self: *Self) void {
     self.ser.ee.addListener(serialEvent, self);
+    self.switches.addListener(.BLK, switchEvent, self);
+    self.switches.addListener(.BLU, switchEvent, self);
+    self.switches.addListener(.YEL, switchEvent, self);
+    self.switches.addListener(.RED, switchEvent, self);
 }
 
 fn scheduleTasks(self: *Self) !void {
     try self.stepper.start(self.root_scheduler.pri(0));
     self.ser.schedule(self.root_scheduler.pri(1));
+    self.switches.schedule(self.slow_scheduler.pri(0));
 }
 
 pub fn start(self: *Self) !void {

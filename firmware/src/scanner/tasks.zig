@@ -4,8 +4,8 @@ pub const Task = union(enum) {
     const Self = @This();
     pub const ID = @typeInfo(Self).@"union".tag_type.?;
 
-    tester: @import("tasks/Tester.zig"),
     calibrate: @import("tasks/Calibrate.zig"),
+    tester: @import("tasks/Tester.zig"),
 
     pub fn init(id: ID, app: *App) Self {
         switch (id) {

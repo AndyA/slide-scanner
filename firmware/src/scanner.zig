@@ -65,19 +65,6 @@ pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noretu
 
 const Pin = hal.gpio.Pin;
 
-const SwitchBox = struct {
-    const Self = @This();
-    pins: [4]Pin,
-
-    fn onSwitch(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        std.log.info("{s} {any}", .{ @tagName(payload.which), payload.state });
-        if (payload.state) {
-            self.pins[@backingInt(payload.which)].toggle();
-        }
-    }
-};
-
 const USB = USBTask(USB_Controller);
 
 fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
@@ -118,9 +105,6 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
-const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
-const Switches = switchset.SwitcheSet(SwitchMap, 3);
-
 pub fn main() !void {
     logging.init(.{});
     std.log.info("Starting...", .{});
@@ -137,6 +121,18 @@ pub fn main() !void {
             .dir_pin = pins.dir,
         },
         .opto_pin = pins.lim_opto,
+        .task_switches = .{
+            pins.blk_sw,
+            pins.blu_sw,
+            pins.yel_sw,
+            pins.red_sw,
+        },
+        .task_leds = .{
+            pins.blk_led,
+            pins.blu_led,
+            pins.yel_led,
+            pins.red_led,
+        },
     });
 
     uart.apply(.{ .clock_config = hal.clock_config });
@@ -152,26 +148,6 @@ pub fn main() !void {
     var usb_task: USB = .init(&usb_controller, &usb_device);
     usb_task.ee.addListener(usbEvent, &usb_task);
     usb_task.schedule(app.root_scheduler.pri(2));
-
-    var box: SwitchBox = .{ .pins = .{
-        pins.red_led,
-        pins.yel_led,
-        pins.blu_led,
-        pins.blk_led,
-    } };
-
-    var switches: Switches = .init(.{
-        pins.red_sw,
-        pins.yel_sw,
-        pins.blu_sw,
-        pins.blk_sw,
-    });
-
-    switches.addListener(.RED, SwitchBox.onSwitch, &box);
-    switches.addListener(.YEL, SwitchBox.onSwitch, &box);
-    switches.addListener(.BLU, SwitchBox.onSwitch, &box);
-    switches.addListener(.BLK, SwitchBox.onSwitch, &box);
-    switches.schedule(app.slow_scheduler.pri(0));
 
     var blinker: Blinker = .init(pins.led, 100_000);
     blinker.schedule(app.slow_scheduler.pri(1));
