@@ -35,19 +35,16 @@ pub fn start(self: *Self, app: *App) void {
     app.stepper.setSpeed(200 * 16);
 
     const opto = app.config.opto_pin.read();
-    // std.log.info("calibrate start (opto = {d})", .{opto});
     self.goState(if (opto == 1) .WITHDRAW else .ADVANCE);
 }
 
 pub fn stop(self: *Self, app: *App) void {
-    // std.log.info("calibrate stop", .{});
     app.stepper.setSpeed(0);
     app.stepper.state_ee.removeListener(stepperEvent, self);
     app.stepper.rt_ee.removeListener(stepperRTEvent, self);
 }
 
 fn goState(self: *Self, state: State) void {
-    // std.log.info("calib state {s}", .{@tagName(state)});
     const steps = switch (state) {
         .WITHDRAW, .BACKLASH => -100 * 16,
         .ADVANCE, .STROKE => 320 * 16,
@@ -61,14 +58,13 @@ fn goState(self: *Self, state: State) void {
 
 fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    // std.log.info("motor: {s}", .{@tagName(e.state)});
     switch (e.state) {
         .IDLE => {
             switch (self.state) {
                 .WITHDRAW => {
                     const opto = self.app.config.opto_pin.read();
                     if (opto == 1)
-                        self.app.exitTask("Aperture blocked")
+                        self.app.exitTask(.CalibrationError)
                     else
                         self.goState(.ADVANCE);
                 },
@@ -79,7 +75,7 @@ fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
                 .PARK => {
                     self.app.calibration = self.calibration;
                     std.log.info("calibration: {any}", .{self.calibration});
-                    self.app.exitTask("Calibration complete");
+                    self.app.exitTask(.CalibrationDone);
                 },
                 else => {},
             }

@@ -4,11 +4,11 @@ const App = @import("../App.zig");
 const TMC2009 = @import("../../drivers/TMC2209.zig");
 
 const Self = @This();
-const State = enum { INIT, HOME, ADVANCE };
+const State = enum { INIT, HOME, ADVANCE, EMPTY, ERROR };
 
 app: *App,
 state: State = .INIT,
-current_opto: u1 = 0,
+notch: bool = false,
 
 pub fn init(app: *App) Self {
     return .{ .app = app };
@@ -19,7 +19,7 @@ pub fn start(self: *Self, app: *App) void {
     app.stepper.rt_ee.addListener(stepperRTEvent, self);
 
     if (app.calibration == null) {
-        app.exitTask("Not calibrated");
+        app.exitTask(.NotCalibrated);
         return;
     }
 
@@ -37,9 +37,8 @@ pub fn stop(self: *Self, app: *App) void {
 }
 
 fn goState(self: *Self, state: State) void {
-    // std.log.info("calib state {s}", .{@tagName(state)});
     const steps = switch (state) {
-        .HOME => -self.app.stepper.current_position,
+        .HOME, .EMPTY, .ERROR => -self.app.stepper.current_position,
         .ADVANCE => self.app.calibration.?.range + 800,
         else => 0,
     };
@@ -49,13 +48,14 @@ fn goState(self: *Self, state: State) void {
 
 fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    std.log.info("motor: {s} {d}", .{ @tagName(e.state), self.app.stepper.current_position });
     switch (e.state) {
         .IDLE => {
             switch (self.state) {
                 .INIT => unreachable,
                 .HOME => self.goState(.ADVANCE),
-                else => {},
+                .EMPTY => self.app.exitTask(.AdvanceEmpty),
+                .ERROR => self.app.exitTask(.AdvanceError),
+                .ADVANCE => self.app.exitTask(if (self.notch) .AdvanceBlank else .AdvanceSlide),
             }
         },
         else => {},
@@ -64,9 +64,16 @@ fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
 
 fn stepperRTEvent(ctx: *anyopaque, _: TMC2009.Stepper.RTEvent) !void {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    const opto = self.app.config.opto_pin.read();
-    if (opto != self.current_opto) {
-        self.current_opto = opto;
-        std.log.info("opto: {d}, pos: {d}", .{ opto, self.app.stepper.current_position });
+    switch (self.state) {
+        .ADVANCE => {
+            const opto = self.app.config.opto_pin.read();
+            switch (self.app.stepper.current_position) {
+                1850 => if (opto == 0) self.goState(.EMPTY),
+                3000 => self.notch = opto == 0,
+                4150 => if (opto == 0) self.goState(.ERROR),
+                else => {},
+            }
+        },
+        else => {},
     }
 }

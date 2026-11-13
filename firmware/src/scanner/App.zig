@@ -40,6 +40,17 @@ const SwitchMap = enum(u8) {
 };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
+const TaskResult = enum {
+    Cancelled,
+    CalibrationError,
+    CalibrationDone,
+    NotCalibrated,
+    AdvanceEmpty,
+    AdvanceBlank,
+    AdvanceSlide,
+    AdvanceError,
+};
+
 const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN, .SG_RESULT };
 
 const Periodic = blk: {
@@ -174,7 +185,7 @@ fn ready(self: *Self) void {
 
 pub fn runTask(self: *Self, id: Task.ID) void {
     if (self.task) |_|
-        self.exitTask("Cancelled");
+        self.exitTask(.Cancelled);
     self.task = Task.init(id, self);
     self.task.?.start(self);
     const which = @backingInt(id);
@@ -182,12 +193,12 @@ pub fn runTask(self: *Self, id: Task.ID) void {
         self.config.task_leds[which].put(1);
 }
 
-pub fn exitTask(self: *Self, status: []const u8) void {
+pub fn exitTask(self: *Self, result: TaskResult) void {
     if (self.task) |*t| {
         const which = @backingInt(t.*);
         if (which < self.config.task_leds.len)
             self.config.task_leds[which].put(0);
-        std.log.info("{s} {s}", .{ @tagName(t.*), status });
+        std.log.info("{s} {s}", .{ @tagName(t.*), @tagName(result) });
         t.stop(self);
         self.task = null;
     } else unreachable;
@@ -202,7 +213,7 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
             .BLU => self.runTask(.advance),
             .RED => {
                 if (self.task) |_|
-                    self.exitTask("Cancelled");
+                    self.exitTask(.Cancelled);
             },
             else => {},
         }
