@@ -173,21 +173,20 @@ fn ready(self: *Self) void {
 }
 
 pub fn runTask(self: *Self, id: Task.ID) void {
+    if (self.task) |_|
+        self.exitTask("Cancelled");
     self.task = Task.init(id, self);
     self.task.?.start(self);
     const which = @backingInt(id);
-    if (which < self.config.task_leds.len) {
+    if (which < self.config.task_leds.len)
         self.config.task_leds[which].put(1);
-    }
-    std.log.info("task {d}", .{which});
 }
 
 pub fn exitTask(self: *Self, status: []const u8) void {
     if (self.task) |*t| {
         const which = @backingInt(t.*);
-        if (which < self.config.task_leds.len) {
+        if (which < self.config.task_leds.len)
             self.config.task_leds[which].put(0);
-        }
         std.log.info("{s} {s}", .{ @tagName(t.*), status });
         t.stop(self);
         self.task = null;
@@ -200,6 +199,10 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
     if (e.state) {
         switch (e.which) {
             .BLK => self.runTask(.calibrate),
+            .RED => {
+                if (self.task) |_|
+                    self.exitTask("Cancelled");
+            },
             else => {},
         }
     }
