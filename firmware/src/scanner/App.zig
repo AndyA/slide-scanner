@@ -211,11 +211,11 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
         switch (e.which) {
             .BLK => self.runTask(.calibrate),
             .BLU => self.runTask(.advance),
+            .YEL => {},
             .RED => {
                 if (self.task) |_|
                     self.exitTask(.Cancelled);
             },
-            else => {},
         }
     }
 }
