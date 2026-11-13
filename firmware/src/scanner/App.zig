@@ -198,7 +198,7 @@ pub fn exitTask(self: *Self, result: TaskResult) void {
         const which = @backingInt(t.*);
         if (which < self.config.task_leds.len)
             self.config.task_leds[which].put(0);
-        std.log.info("{s} {s}", .{ @tagName(t.*), @tagName(result) });
+        std.log.info("task: {s}, result: {s}", .{ @tagName(t.*), @tagName(result) });
         t.stop(self);
         self.task = null;
     } else unreachable;
