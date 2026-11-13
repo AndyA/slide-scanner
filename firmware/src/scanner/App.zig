@@ -4,6 +4,7 @@ const hal = microzig.hal;
 const time = microzig.drivers.time;
 
 const assert = std.debug.assert;
+const Pin = hal.gpio.Pin;
 
 const events = @import("../runtime/events.zig");
 const sched = @import("../runtime/scheduler.zig");
@@ -21,6 +22,7 @@ pub const AppConfig = struct {
     stepper_addr: u2 = 0,
     uart: hal.uart.UART,
     stepper_config: TMC2209.Stepper.Config,
+    opto_pin: Pin,
 };
 
 const FastScheduler = sched.makeScheduler(8);
@@ -151,7 +153,7 @@ fn serialEvent(ctx: *anyopaque) !void {
 
 fn ready(self: *Self) void {
     std.log.info("App ready ({any})", .{self.periodic});
-    self.runTask(.tester);
+    self.runTask(.calibrate);
 }
 
 pub fn runTask(self: *Self, id: Task.ID) void {

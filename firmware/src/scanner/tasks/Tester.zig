@@ -16,12 +16,15 @@ pub fn init(app: *App) Self {
 }
 
 pub fn start(self: *Self, app: *App) void {
-    std.log.info("test start", .{});
-
     app.stepper.state_ee.addListener(stepperEvent, self);
 
     app.stepper.setSpeed(200 * 16);
     self.goState(.F);
+}
+
+pub fn stop(self: *Self, app: *App) void {
+    app.stepper.setSpeed(0);
+    app.stepper.state_ee.removeListener(stepperEvent, self);
 }
 
 fn goState(self: *Self, state: State) void {
@@ -30,7 +33,6 @@ fn goState(self: *Self, state: State) void {
         .R => self.app.stepper.setRemaining(-1000 * 16),
     }
     self.state = state;
-    std.log.info("tester state: {s}", .{@tagName(state)});
 }
 
 fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
@@ -50,9 +52,4 @@ fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
         },
         else => {},
     }
-}
-
-pub fn stop(self: *Self, app: *App) void {
-    std.log.info("test stop", .{});
-    app.stepper.state_ee.removeListener(stepperEvent, self);
 }

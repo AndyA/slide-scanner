@@ -133,10 +133,14 @@ pub fn main() !void {
     pins.pdn_rx.set_function(.uart);
 
     const uart = hal.uart.instance.num(1);
-    var app: App = .init(.{ .uart = uart, .stepper_config = .{
-        .step_pin = pins.step,
-        .dir_pin = pins.dir,
-    } });
+    var app: App = .init(.{
+        .uart = uart,
+        .stepper_config = .{
+            .step_pin = pins.step,
+            .dir_pin = pins.dir,
+        },
+        .opto_pin = pins.lim_opto,
+    });
 
     uart.apply(.{ .clock_config = hal.clock_config });
 

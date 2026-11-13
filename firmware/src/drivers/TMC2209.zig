@@ -762,7 +762,7 @@ pub const Stepper = struct {
 
     pub fn setSpeed(self: *Self, speed: u32) void {
         if (speed != self.speed) {
-            const us_per_step = 1_000_000 / speed;
+            const us_per_step = if (speed == 0) 0 else 1_000_000 / speed;
             self.us_per_step = @max(STEP_TIME * 2, us_per_step);
             self.speed = speed;
             std.log.debug("us per step: {d}", .{self.us_per_step});
