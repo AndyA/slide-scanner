@@ -5,7 +5,7 @@ pub const Task = union(enum) {
     pub const ID = @typeInfo(Self).@"union".tag_type.?;
 
     calibrate: @import("tasks/Calibrate.zig"),
-    tester: @import("tasks/Tester.zig"),
+    advance: @import("tasks/Advance.zig"),
 
     pub fn init(id: ID, app: *App) Self {
         switch (id) {

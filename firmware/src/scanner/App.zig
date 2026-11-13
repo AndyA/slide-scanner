@@ -195,10 +195,11 @@ pub fn exitTask(self: *Self, status: []const u8) void {
 
 fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    std.log.info("{any}", .{e});
+    // std.log.info("{any}", .{e});
     if (e.state) {
         switch (e.which) {
             .BLK => self.runTask(.calibrate),
+            .BLU => self.runTask(.advance),
             .RED => {
                 if (self.task) |_|
                     self.exitTask("Cancelled");
