@@ -70,6 +70,8 @@ stepper: TMC2209.Stepper,
 periodic: Periodic = .{},
 task: ?Task = null,
 
+calibration: ?@import("tasks/Calibrate.zig").Calibration = null,
+
 pub fn init(config: AppConfig) Self {
     return .{
         .config = config,

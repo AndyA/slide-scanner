@@ -94,10 +94,7 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
         },
     }
 }
-fn onOpto(ctx: *anyopaque, payload: Switches.SwitchEvent) !void {
-    _ = ctx;
-    std.log.info("opto {any}", .{payload.state});
-}
+
 // Compile-time pin configuration
 const pin_config = hal.pins.GlobalConfiguration{
     .GPIO2 = .{ .name = "blk_sw", .direction = .in, .pull = .up },
@@ -121,7 +118,7 @@ const pin_config = hal.pins.GlobalConfiguration{
     .GPIO22 = .{ .name = "en", .direction = .out },
 };
 
-const SwitchMap = enum(u8) { RED, YEL, BLU, BLK, OPTO };
+const SwitchMap = enum(u8) { RED, YEL, BLU, BLK };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
 pub fn main() !void {
@@ -168,14 +165,12 @@ pub fn main() !void {
         pins.yel_sw,
         pins.blu_sw,
         pins.blk_sw,
-        pins.lim_opto,
     });
 
     switches.addListener(.RED, SwitchBox.onSwitch, &box);
     switches.addListener(.YEL, SwitchBox.onSwitch, &box);
     switches.addListener(.BLU, SwitchBox.onSwitch, &box);
     switches.addListener(.BLK, SwitchBox.onSwitch, &box);
-    switches.addListener(.OPTO, onOpto, &.{});
     switches.schedule(app.slow_scheduler.pri(0));
 
     var blinker: Blinker = .init(pins.led, 100_000);
