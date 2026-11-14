@@ -150,7 +150,7 @@ pub fn main() !void {
     usb_task.schedule(app.root_scheduler.pri(2));
 
     var blinker: Blinker = .init(pins.led, 100_000);
-    blinker.schedule(app.slow_scheduler.pri(1));
+    blinker.schedule(app.slow_scheduler.pri(-1));
 
     try app.start();
 }

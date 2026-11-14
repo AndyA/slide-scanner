@@ -32,12 +32,7 @@ pub const AppConfig = struct {
 const FastScheduler = sched.makeScheduler(8);
 const SlowScheduler = sched.makeNestedScheduler(8, 250);
 
-const SwitchMap = enum(u8) {
-    BLK,
-    BLU,
-    YEL,
-    RED,
-};
+const SwitchMap = enum(u8) { BLK, BLU, YEL, RED };
 const Switches = switchset.SwitcheSet(SwitchMap, 3);
 
 const TaskResult = enum {
@@ -186,6 +181,7 @@ fn ready(self: *Self) void {
 pub fn runTask(self: *Self, id: Task.ID) void {
     if (self.task) |_|
         self.exitTask(.Cancelled);
+    std.log.info("task: {s} run", .{@tagName(id)});
     self.task = Task.init(id, self);
     self.task.?.start(self);
     const which = @backingInt(id);
@@ -198,7 +194,7 @@ pub fn exitTask(self: *Self, result: TaskResult) void {
         const which = @backingInt(t.*);
         if (which < self.config.task_leds.len)
             self.config.task_leds[which].put(0);
-        std.log.info("task: {s}, result: {s}", .{ @tagName(t.*), @tagName(result) });
+        std.log.info("task {s} exit: {s}", .{ @tagName(t.*), @tagName(result) });
         t.stop(self);
         self.task = null;
     } else unreachable;
@@ -213,8 +209,9 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
             .BLU => self.runTask(.advance),
             .YEL => {},
             .RED => {
-                if (self.task) |_|
+                if (self.task) |_| {
                     self.exitTask(.Cancelled);
+                }
             },
         }
     }
@@ -222,10 +219,10 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
 
 fn installHandlers(self: *Self) void {
     self.ser.ee.addListener(serialEvent, self);
-    self.switches.addListener(.BLK, switchEvent, self);
-    self.switches.addListener(.BLU, switchEvent, self);
-    self.switches.addListener(.YEL, switchEvent, self);
-    self.switches.addListener(.RED, switchEvent, self);
+    const switches = .{ .BLK, .BLU, .YEL, .RED };
+    inline for (switches) |sw| {
+        self.switches.addListener(sw, switchEvent, self);
+    }
 }
 
 fn scheduleTasks(self: *Self) !void {
