@@ -4,7 +4,7 @@ const App = @import("../App.zig");
 const TMC2009 = @import("../../drivers/TMC2209.zig");
 
 const Self = @This();
-const State = enum { INIT, HOME, ADVANCE, EMPTY, ERROR };
+const State = enum { INIT, HOME, ADVANCE, RETREAT, EMPTY, ERROR };
 
 app: *App,
 state: State = .INIT,
@@ -38,9 +38,9 @@ pub fn stop(self: *Self, app: *App) void {
 
 fn goState(self: *Self, state: State) void {
     const steps = switch (state) {
-        .HOME, .EMPTY, .ERROR => -self.app.stepper.current_position,
+        .INIT => unreachable,
+        .HOME, .EMPTY, .ERROR, .RETREAT => -self.app.stepper.current_position,
         .ADVANCE => self.app.calibration.?.range + 800,
-        else => 0,
     };
     self.app.stepper.setRemaining(steps);
     self.state = state;
@@ -55,7 +55,8 @@ fn stepperEvent(ctx: *anyopaque, e: TMC2009.Stepper.Event) !void {
                 .HOME => self.goState(.ADVANCE),
                 .EMPTY => self.app.exitTask(.AdvanceEmpty),
                 .ERROR => self.app.exitTask(.AdvanceError),
-                .ADVANCE => self.app.exitTask(if (self.notch) .AdvanceBlank else .AdvanceSlide),
+                .ADVANCE => self.goState(.RETREAT),
+                .RETREAT => self.app.exitTask(if (self.notch) .AdvanceBlank else .AdvanceSlide),
             }
         },
         else => {},
