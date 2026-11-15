@@ -302,11 +302,11 @@ pub fn runTask(self: *Self, id: Task.ID) void {
     if (self.task) |_|
         self.exitTask(.Cancelled);
     std.log.info("task: {s} run", .{@tagName(id)});
-    self.task = Task.init(id, self);
-    self.task.?.start(self);
     const which = @backingInt(id);
     if (which < self.config.task_leds.len)
         self.config.task_leds[which].put(1);
+    self.task = Task.init(id, self);
+    self.task.?.start(self);
 }
 
 pub fn exitTask(self: *Self, result: TaskResult) void {
