@@ -71,6 +71,7 @@ const TaskResult = enum {
     AdvanceBlank,
     AdvanceSlide,
     AdvanceError,
+    BadCommand,
 };
 
 const PERIODIC: []const TMC2209.Register = &.{ .GSTAT, .IOIN, .SG_RESULT };
@@ -208,6 +209,73 @@ fn serialEvent(ctx: *anyopaque) !void {
     }
 }
 
+fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    // std.log.info("{any}", .{e});
+    if (e.state) {
+        switch (e.which) {
+            .BLK => self.runTask(.calibrate),
+            .BLU => self.runTask(.advance),
+            .YEL => {},
+            .RED => {
+                if (self.task) |_| {
+                    self.exitTask(.Cancelled);
+                }
+            },
+        }
+    }
+}
+
+fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    switch (event) {
+        .line => |line| {
+            self.handleCommand(line);
+        },
+        .bulk => {
+            self.usbSendResult(.BadCommand);
+        },
+    }
+}
+
+fn sendStatus(self: *Self) !void {
+    var buf: [256]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&buf);
+    _ = try writer.write("STATUS: ");
+    var stringer: std.json.Stringify = .{ .writer = &writer };
+    const task_name: ?[]const u8 = if (self.task) |*t| @tagName(t.*) else null;
+    try stringer.write(.{
+        .calibration = self.calibration,
+        .task = task_name,
+    });
+    _ = try writer.write("\n");
+    try writer.flush();
+    _ = self.usb_task.write(writer.buffered());
+}
+
+fn handleCommand(self: *Self, cmd: []const u8) void {
+    if (std.mem.eql(u8, "CALIBRATE", cmd)) {
+        self.runTask(.calibrate);
+    } else if (std.mem.eql(u8, "ADVANCE", cmd)) {
+        self.runTask(.advance);
+    } else if (std.mem.eql(u8, "STATUS", cmd)) {
+        self.sendStatus() catch unreachable;
+    } else if (std.mem.eql(u8, "PANIC", cmd)) {
+        if (self.task != null)
+            self.exitTask(.Cancelled)
+        else
+            self.usbSendResult(.Cancelled);
+    } else {
+        self.usbSendResult(.BadCommand);
+    }
+}
+
+fn usbSendResult(self: *Self, result: TaskResult) void {
+    var buf: [1024]u8 = undefined;
+    const tx = std.fmt.bufPrint(&buf, "RESULT: {s}\n", .{@tagName(result)}) catch unreachable;
+    _ = self.usb_task.write(tx);
+}
+
 fn ready(self: *Self) void {
     std.log.info("App ready ({any})", .{self.periodic});
     self.runTask(.calibrate);
@@ -232,56 +300,28 @@ pub fn exitTask(self: *Self, result: TaskResult) void {
         std.log.info("task {s} exit: {s}", .{ @tagName(t.*), @tagName(result) });
         t.stop(self);
         self.task = null;
+        self.usbSendResult(result);
     } else unreachable;
-}
-
-fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
-    const self: *Self = @ptrCast(@alignCast(ctx));
-    // std.log.info("{any}", .{e});
-    if (e.state) {
-        switch (e.which) {
-            .BLK => self.runTask(.calibrate),
-            .BLU => self.runTask(.advance),
-            .YEL => {},
-            .RED => {
-                if (self.task) |_| {
-                    self.exitTask(.Cancelled);
-                }
-            },
-        }
-    }
-}
-
-fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
-    const self: *Self = @ptrCast(@alignCast(ctx));
-    var buf: [1024]u8 = undefined;
-    switch (event) {
-        inline else => |data| {
-            std.log.debug("USB: {s} \"{s}\"", .{ @tagName(event), data });
-            const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
-            _ = self.usb_task.write(tx);
-        },
-    }
 }
 
 fn installHandlers(self: *Self) void {
     self.ser.ee.addListener(serialEvent, self);
+    self.usb_task.ee.addListener(usbEvent, self);
     const switches = .{ .BLK, .BLU, .YEL, .RED };
     inline for (switches) |sw| {
         self.switches.addListener(sw, switchEvent, self);
     }
-    self.usb_task.ee.addListener(usbEvent, self);
 }
 
 fn scheduleTasks(self: *Self) !void {
     try self.stepper.start(self.root_scheduler.pri(0));
     self.ser.schedule(self.root_scheduler.pri(1));
     self.usb_task.schedule(self.root_scheduler.pri(2));
+    self.slow_scheduler.schedule(self.root_scheduler.pri(-1));
     self.switches.schedule(self.slow_scheduler.pri(0));
 }
 
 pub fn start(self: *Self) !void {
-    self.slow_scheduler.schedule(self.root_scheduler.pri(-1));
     self.installHandlers();
     self.sendSetupCommands();
     try self.scheduleTasks();
