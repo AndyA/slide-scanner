@@ -253,8 +253,8 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
 }
 
 fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
+    const self: *Self = @ptrCast(@alignCast(ctx));
     var buf: [1024]u8 = undefined;
-    const task: *USB = @ptrCast(@alignCast(ctx));
     switch (event) {
         inline else => |data| {
             std.log.debug(
@@ -262,7 +262,7 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
                 .{ @tagName(event), data },
             );
             const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
-            _ = task.write(tx);
+            _ = self.usb_task.write(tx);
         },
     }
 }
