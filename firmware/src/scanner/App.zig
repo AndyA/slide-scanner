@@ -233,24 +233,35 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
             self.handleCommand(line);
         },
         .bulk => {
-            self.usbSendResult(.BadCommand);
+            self.sendResult(.BadCommand);
         },
     }
 }
 
-fn sendStatus(self: *Self) !void {
-    var buf: [256]u8 = undefined;
+fn sendResponse(self: *Self, response: anytype) !void {
+    var buf: [512]u8 = undefined;
     var writer = std.Io.Writer.fixed(&buf);
-    _ = try writer.write("STATUS: ");
     var stringer: std.json.Stringify = .{ .writer = &writer };
-    const task_name: ?[]const u8 = if (self.task) |*t| @tagName(t.*) else null;
-    try stringer.write(.{
-        .calibration = self.calibration,
-        .task = task_name,
-    });
+    try stringer.write(response);
     _ = try writer.write("\n");
     try writer.flush();
     _ = self.usb_task.write(writer.buffered());
+}
+
+fn sendStatus(self: *Self) void {
+    const task_name: ?[]const u8 = if (self.task) |*t| @tagName(t.*) else null;
+    self.sendResponse(.{
+        .tag = "status",
+        .calibration = self.calibration,
+        .task = task_name,
+    }) catch unreachable;
+}
+
+fn sendResult(self: *Self, result: TaskResult) void {
+    self.sendResponse(.{
+        .tag = "result",
+        .result = @tagName(result),
+    }) catch unreachable;
 }
 
 fn handleCommand(self: *Self, cmd: []const u8) void {
@@ -259,21 +270,15 @@ fn handleCommand(self: *Self, cmd: []const u8) void {
     } else if (std.mem.eql(u8, "ADVANCE", cmd)) {
         self.runTask(.advance);
     } else if (std.mem.eql(u8, "STATUS", cmd)) {
-        self.sendStatus() catch unreachable;
+        self.sendStatus();
     } else if (std.mem.eql(u8, "PANIC", cmd)) {
         if (self.task != null)
             self.exitTask(.Cancelled)
         else
-            self.usbSendResult(.Cancelled);
+            self.sendResult(.Cancelled);
     } else {
-        self.usbSendResult(.BadCommand);
+        self.sendResult(.BadCommand);
     }
-}
-
-fn usbSendResult(self: *Self, result: TaskResult) void {
-    var buf: [1024]u8 = undefined;
-    const tx = std.fmt.bufPrint(&buf, "RESULT: {s}\n", .{@tagName(result)}) catch unreachable;
-    _ = self.usb_task.write(tx);
 }
 
 fn ready(self: *Self) void {
@@ -300,7 +305,7 @@ pub fn exitTask(self: *Self, result: TaskResult) void {
         std.log.info("task {s} exit: {s}", .{ @tagName(t.*), @tagName(result) });
         t.stop(self);
         self.task = null;
-        self.usbSendResult(result);
+        self.sendResult(result);
     } else unreachable;
 }
 
