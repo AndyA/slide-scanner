@@ -1,6 +1,6 @@
 {
   "python.analysis.extraPaths": ["src"],
-   "zig.zls.enabled": "on",
+  "zig.zls.enabled": "on",
   // You can add more Zig and ZLS options here
 
   // Whether to enable build-on-save diagnostics
@@ -21,7 +21,6 @@
     "editor.codeActionsOnSave": {
       // Run code actions that currently supports adding and removing discards.
       // "source.fixAll": "explicit",
-      
       // Run code actions that sorts @import declarations.
       // "source.organizeImports": "explicit",
     }
