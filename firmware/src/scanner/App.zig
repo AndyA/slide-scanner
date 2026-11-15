@@ -257,10 +257,7 @@ fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
     var buf: [1024]u8 = undefined;
     switch (event) {
         inline else => |data| {
-            std.log.debug(
-                "USB: {s} \"{s}\"",
-                .{ @tagName(event), data },
-            );
+            std.log.debug("USB: {s} \"{s}\"", .{ @tagName(event), data });
             const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
             _ = self.usb_task.write(tx);
         },
