@@ -1,7 +1,7 @@
 .{
-    .name = .SlideScanner,
+    .name = .SlideFeeder,
     .version = "0.0.0",
-    .fingerprint = 0xd9b6226ab3f9b0e5,
+    .fingerprint = 0x519beeb8a477faf1,
     .minimum_zig_version = "0.17.1",
     .zig_version = "0.17.1",
     .dependencies = .{

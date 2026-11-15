@@ -31,7 +31,7 @@ const USB_Controller = usb.DeviceController(.{
     .vendor = USB_Device.default_vendor_id,
     .product = USB_Device.default_product_id,
     .bcd_device = .v1_00,
-    .serial = "scanner",
+    .serial = "feeder",
     .max_supported_packet_size = USB_Device.max_supported_packet_size,
     .configurations = &.{.{
         .attributes = .{ .self_powered = false },
@@ -42,7 +42,7 @@ const USB_Controller = usb.DeviceController(.{
         },
     }},
 }, .{.{
-    .serial = .{ .itf_notifi = "Scanner CDC", .itf_data = "Scanner CDC Data" },
+    .serial = .{ .itf_notifi = "Feeder CDC", .itf_data = "Feeder CDC Data" },
     .reset = "",
 }});
 const USB = USBTask(USB_Controller);
@@ -279,7 +279,13 @@ fn handleCommand(self: *Self, cmd: []const u8) void {
     } else if (std.mem.eql(u8, "help", cmd)) {
         self.sendResponse(.{
             .tag = "help",
-            .commands = &.{ "calibrate", "advance", "panic", "help" },
+            .commands = &.{
+                "calibrate",
+                "advance",
+                "status",
+                "panic",
+                "help",
+            },
         }) catch unreachable;
     } else {
         self.sendResult(.BadCommand);

@@ -13,8 +13,8 @@ const Blinker = @import("drivers/Blinker.zig");
 const switchset = @import("drivers/switchset.zig");
 const TMC2209 = @import("drivers/TMC2209.zig");
 
-const SerialEngine = @import("scanner/SerialEngine.zig");
-const App = @import("scanner/App.zig");
+const SerialEngine = @import("feeder/SerialEngine.zig");
+const App = @import("feeder/App.zig");
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,

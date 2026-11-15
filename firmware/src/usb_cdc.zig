@@ -20,7 +20,7 @@ var usb_controller: usb.DeviceController(.{
     .vendor = USB_Device.default_vendor_id,
     .product = USB_Device.default_product_id,
     .bcd_device = .v1_00,
-    .serial = "scanner",
+    .serial = "feeder",
     .max_supported_packet_size = USB_Device.max_supported_packet_size,
     .configurations = &.{.{
         .attributes = .{ .self_powered = false },
