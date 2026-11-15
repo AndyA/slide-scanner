@@ -265,25 +265,31 @@ fn sendResult(self: *Self, result: TaskResult) void {
 }
 
 fn handleCommand(self: *Self, cmd: []const u8) void {
-    if (std.mem.eql(u8, "CALIBRATE", cmd)) {
+    if (std.mem.eql(u8, "calibrate", cmd)) {
         self.runTask(.calibrate);
-    } else if (std.mem.eql(u8, "ADVANCE", cmd)) {
+    } else if (std.mem.eql(u8, "advance", cmd)) {
         self.runTask(.advance);
-    } else if (std.mem.eql(u8, "STATUS", cmd)) {
+    } else if (std.mem.eql(u8, "status", cmd)) {
         self.sendStatus();
-    } else if (std.mem.eql(u8, "PANIC", cmd)) {
+    } else if (std.mem.eql(u8, "panic", cmd)) {
         if (self.task != null)
             self.exitTask(.Cancelled)
         else
             self.sendResult(.Cancelled);
+    } else if (std.mem.eql(u8, "help", cmd)) {
+        self.sendResponse(.{
+            .tag = "help",
+            .commands = &.{ "calibrate", "advance", "panic", "help" },
+        }) catch unreachable;
     } else {
         self.sendResult(.BadCommand);
     }
 }
 
 fn ready(self: *Self) void {
-    std.log.info("App ready ({any})", .{self.periodic});
-    self.runTask(.calibrate);
+    _ = self;
+    std.log.info("Feeder Ready", .{});
+    // self.runTask(.calibrate);
 }
 
 pub fn runTask(self: *Self, id: Task.ID) void {
