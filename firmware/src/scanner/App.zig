@@ -2,6 +2,8 @@ const std = @import("std");
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = microzig.drivers.time;
+const usb = microzig.core.usb;
+const USB_Serial = usb.drivers.CDC;
 
 const assert = std.debug.assert;
 const Pin = hal.gpio.Pin;
@@ -18,7 +20,32 @@ const Task = @import("tasks.zig").Task;
 const Datagram = TMC2209.Datagram;
 const Calibration = @import("tasks/Calibrate.zig").Calibration;
 
+const USB_Device = hal.usb.Polled(.{});
+const USBTask = @import("usb_task.zig").USBTask;
+
 const Self = @This();
+
+const USB_Controller = usb.DeviceController(.{
+    .bcd_usb = USB_Device.max_supported_bcd_usb,
+    .device_triple = .unspecified,
+    .vendor = USB_Device.default_vendor_id,
+    .product = USB_Device.default_product_id,
+    .bcd_device = .v1_00,
+    .serial = "scanner",
+    .max_supported_packet_size = USB_Device.max_supported_packet_size,
+    .configurations = &.{.{
+        .attributes = .{ .self_powered = false },
+        .max_current_ma = 50,
+        .Drivers = struct {
+            serial: USB_Serial,
+            reset: hal.usb.ResetDriver(null, 0),
+        },
+    }},
+}, .{.{
+    .serial = .{ .itf_notifi = "Scanner CDC", .itf_data = "Scanner CDC Data" },
+    .reset = "",
+}});
+const USB = USBTask(USB_Controller);
 
 pub const AppConfig = struct {
     stepper_addr: u2 = 0,
@@ -85,6 +112,10 @@ root_scheduler: FastScheduler = .empty,
 slow_scheduler: SlowScheduler = .empty,
 switches: Switches,
 ser: SerialEngine,
+
+usb_controller: USB_Controller,
+usb_device: USB_Device,
+usb_task: USB = undefined,
 stepper: TMC2209.Stepper,
 periodic: Periodic = .{},
 task: ?Task = null,
@@ -92,12 +123,16 @@ task: ?Task = null,
 calibration: ?Calibration = null,
 
 pub fn init(config: AppConfig) Self {
-    return .{
+    var self: Self = .{
         .config = config,
         .ser = .init(config.uart),
         .stepper = .init(config.stepper_config),
         .switches = .init(config.task_switches),
+        .usb_controller = .init,
+        .usb_device = .init(),
     };
+    self.usb_task = .init(&self.usb_controller, &self.usb_device);
+    return self;
 }
 
 fn serialErrorHandler(ctx: *anyopaque, ev: TMC2209.SerialIO.Event) !void {
@@ -217,17 +252,34 @@ fn switchEvent(ctx: *anyopaque, e: Switches.SwitchEvent) !void {
     }
 }
 
+fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
+    var buf: [1024]u8 = undefined;
+    const task: *USB = @ptrCast(@alignCast(ctx));
+    switch (event) {
+        inline else => |data| {
+            std.log.debug(
+                "USB: {s} \"{s}\"",
+                .{ @tagName(event), data },
+            );
+            const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
+            _ = task.write(tx);
+        },
+    }
+}
+
 fn installHandlers(self: *Self) void {
     self.ser.ee.addListener(serialEvent, self);
     const switches = .{ .BLK, .BLU, .YEL, .RED };
     inline for (switches) |sw| {
         self.switches.addListener(sw, switchEvent, self);
     }
+    self.usb_task.ee.addListener(usbEvent, self);
 }
 
 fn scheduleTasks(self: *Self) !void {
     try self.stepper.start(self.root_scheduler.pri(0));
     self.ser.schedule(self.root_scheduler.pri(1));
+    self.usb_task.schedule(self.root_scheduler.pri(2));
     self.switches.schedule(self.slow_scheduler.pri(0));
 }
 

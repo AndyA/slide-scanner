@@ -2,10 +2,6 @@ const std = @import("std");
 const microzig = @import("microzig");
 const hal = microzig.hal;
 const time = microzig.drivers.time;
-const usb = microzig.core.usb;
-const USB_Serial = usb.drivers.CDC;
-
-const USB_Device = hal.usb.Polled(.{});
 
 const assert = std.debug.assert;
 
@@ -19,8 +15,6 @@ const TMC2209 = @import("drivers/TMC2209.zig");
 
 const SerialEngine = @import("scanner/SerialEngine.zig");
 const App = @import("scanner/App.zig");
-
-const USBTask = @import("scanner/usb_task.zig").USBTask;
 
 pub const std_options = microzig.std_options(.{
     .log_level = .debug,
@@ -36,27 +30,6 @@ comptime {
     _ = microzig.export_startup();
 }
 
-const USB_Controller = usb.DeviceController(.{
-    .bcd_usb = USB_Device.max_supported_bcd_usb,
-    .device_triple = .unspecified,
-    .vendor = USB_Device.default_vendor_id,
-    .product = USB_Device.default_product_id,
-    .bcd_device = .v1_00,
-    .serial = "scanner",
-    .max_supported_packet_size = USB_Device.max_supported_packet_size,
-    .configurations = &.{.{
-        .attributes = .{ .self_powered = false },
-        .max_current_ma = 50,
-        .Drivers = struct {
-            serial: USB_Serial,
-            reset: hal.usb.ResetDriver(null, 0),
-        },
-    }},
-}, .{.{
-    .serial = .{ .itf_notifi = "Scanner CDC", .itf_data = "Scanner CDC Data" },
-    .reset = "",
-}});
-
 pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
     std.log.err("panic: {s}", .{message});
     @breakpoint();
@@ -64,23 +37,6 @@ pub fn panic(message: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noretu
 }
 
 const Pin = hal.gpio.Pin;
-
-const USB = USBTask(USB_Controller);
-
-fn usbEvent(ctx: *anyopaque, event: USB.Event) !void {
-    var buf: [1024]u8 = undefined;
-    const task: *USB = @ptrCast(@alignCast(ctx));
-    switch (event) {
-        inline else => |data| {
-            std.log.debug(
-                "USB: {s} \"{s}\"",
-                .{ @tagName(event), data },
-            );
-            const tx = std.fmt.bufPrint(&buf, "ack {s}\n", .{data}) catch &.{};
-            _ = task.write(tx);
-        },
-    }
-}
 
 // Compile-time pin configuration
 const pin_config = hal.pins.GlobalConfiguration{
@@ -142,12 +98,6 @@ pub fn main() !void {
     pins.mode2.put(0);
 
     // app.ser.schedule(app.root_scheduler.pri(1));
-
-    var usb_controller: USB_Controller = .init;
-    var usb_device: USB_Device = .init();
-    var usb_task: USB = .init(&usb_controller, &usb_device);
-    usb_task.ee.addListener(usbEvent, &usb_task);
-    usb_task.schedule(app.root_scheduler.pri(2));
 
     var blinker: Blinker = .init(pins.led, 100_000);
     blinker.schedule(app.slow_scheduler.pri(-1));
