@@ -2,7 +2,8 @@ const App = @import("App.zig");
 
 pub const Task = union(enum) {
     const Self = @This();
-    pub const ID = @typeInfo(Self).@"union".tag_type.?;
+    const self_info = @typeInfo(Self).@"union";
+    pub const ID = self_info.tag_type.?;
 
     calibrate: @import("tasks/Calibrate.zig"),
     advance: @import("tasks/Advance.zig"),
@@ -10,7 +11,7 @@ pub const Task = union(enum) {
     pub fn init(id: ID, app: *App) Self {
         switch (id) {
             inline else => |ii| {
-                const Type = @typeInfo(Self).@"union".field_types[@backingInt(ii)];
+                const Type = self_info.field_types[@backingInt(ii)];
                 const task: Type = if (@hasDecl(Type, "init")) .init(app) else .{};
                 return @unionInit(Self, @tagName(ii), task);
             },
